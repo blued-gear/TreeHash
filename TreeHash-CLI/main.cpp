@@ -113,7 +113,10 @@ void setupCommands(QCommandLineParser& parser){
         {"no-linked-dirs",
             "exclude linked directories from scan"},
         {"no-linked-files",
-            "exclude linked files from scan"}
+            "exclude linked files from scan"},
+        {"hash-alg",
+            "set the algorithm to use for computing the hashes",
+            "Sha256, Sha512, Sha3_256, Sha3_512, Keccak_256, Keccak_512 (default), Blake2b_256, Blake2b_512"}
     });
 
     parser.addHelpOption();
@@ -175,6 +178,31 @@ int execNormal(QCommandLineParser& args){
         return -1;
     }
 
+    QCryptographicHash::Algorithm hashAlg = QCryptographicHash::Algorithm::Keccak_512;
+    if(args.isSet("hash-alg")){
+        const QString hashAlgStr = args.value("hash-alg");
+        if(hashAlgStr == "Sha256")
+            hashAlg = QCryptographicHash::Algorithm::Sha256;
+        else if(hashAlgStr == "Sha512")
+            hashAlg = QCryptographicHash::Algorithm::Sha512;
+        else if(hashAlgStr == "Sha3_256")
+            hashAlg = QCryptographicHash::Algorithm::Sha3_256;
+        else if(hashAlgStr == "Sha3_512")
+            hashAlg = QCryptographicHash::Algorithm::Sha3_512;
+        else if(hashAlgStr == "Keccak_256")
+            hashAlg = QCryptographicHash::Algorithm::Keccak_256;
+        else if(hashAlgStr == "Keccak_512")
+            hashAlg = QCryptographicHash::Algorithm::Keccak_512;
+        else if(hashAlgStr == "Blake2b_256")
+            hashAlg = QCryptographicHash::Algorithm::Blake2b_256;
+        else if(hashAlgStr == "Blake2b_512")
+            hashAlg = QCryptographicHash::Algorithm::Blake2b_512;
+        else{
+            std::cerr << "invalid hash-algorithm\n";
+            return -1;
+        }
+    }
+
     if(!QFileInfo(args.value("r")).isDir()){
         std::cerr << "root does not exist or is not a directory\n";
         return -1;
@@ -226,6 +254,7 @@ int execNormal(QCommandLineParser& args){
     try{
         TreeHash::LibTreeHash treeHash(eventListener);
         treeHash.setMode(mode);
+        treeHash.setHashAlgorithm(hashAlg);
         treeHash.setRootDir(args.value("r"));
         treeHash.setHashesFile(args.value("f"));
         treeHash.setFiles(listFiles(args));
