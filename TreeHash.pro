@@ -2,4 +2,5 @@ TEMPLATE = subdirs
 
 SUBDIRS += \
     LibTreeHash \
-    LibTreeHash-Test
+    LibTreeHash-Test \
+    TreeHash-CLI
