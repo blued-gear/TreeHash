@@ -42,7 +42,7 @@ QStringList listFiles(QCommandLineParser& args){
 
     // 2. remove excluded dirs and files
     for(const QString& e : args.values("e")){
-        QString path = root.absoluteFilePath(e);
+        QString path = QDir::cleanPath(root.absoluteFilePath(e));
         fi.setFile(path);
 
         if(fi.isDir()){
@@ -60,7 +60,7 @@ QStringList listFiles(QCommandLineParser& args){
     // 3. include explicit included files
     if(args.isSet("i")){
         for(const QString& i : args.values("i")){
-            QString path = root.absoluteFilePath(i);
+            QString path = QDir::cleanPath(root.absoluteFilePath(i));
             fi.setFile(path);
 
             if(fi.isDir()){
@@ -75,7 +75,7 @@ QStringList listFiles(QCommandLineParser& args){
 
     // 4. remove hashfile
     QFileInfo hashfileInfo(args.value("f"));
-    files.removeOne(hashfileInfo.absoluteFilePath());
+    files.removeOne(QDir::cleanPath(hashfileInfo.absoluteFilePath()));
 
     return files;
 }

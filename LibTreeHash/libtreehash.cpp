@@ -105,7 +105,7 @@ QString LibTreeHash::getHmacKey() const{
     return this->priv->hmacKey;
 }
 
-void LibTreeHash::run(){//TODO use cleaned paths (without '.') in log-messages
+void LibTreeHash::run(){
     this->priv->openHashFile(this->rootDir);
 
     this->priv->processFiles(this->runMode, this->rootDir);
@@ -194,7 +194,6 @@ void LibTreeHashPrivate::processFiles(RunMode runMode, QString& rootDir){
     QFileInfo fi;
     QString relPath;
     for(QString& f : this->files){
-        // check if is a file
         fi.setFile(f);
         if(!fi.isFile()){
             this->eventListener.callOnWarning(QStringLiteral("item on file-list is not a file; skipping"), f);
@@ -315,7 +314,7 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
         QFileInfo fi(e);
         if(!fi.isFile()) continue;
         if(!includeLinkedFiles && fi.isSymLink()) continue;
-        ret.append(fi.absoluteFilePath());
+        ret.append(QDir::cleanPath(fi.absoluteFilePath()));
     }
 
     return ret;
