@@ -352,9 +352,25 @@ void LibTreeHashPrivate::processFiles(RunMode runMode){
                 if(!this->hashFileData["files"].contains(relPath.toStdString())){
                     this->updateEntry(f, relPath);
                 }
+                break;
             }
             case RunMode::UPDATE_MODIFIED: {
-                //TODO
+                const auto& files = this->hashFileData["files"];
+                if(const auto fileEntry = files.find(relPath.toStdString()); fileEntry != files.end()){
+                    if(const auto lastModified = fileEntry->find("lastModified"); lastModified != fileEntry->end()){
+                        qint64 currentModTime = QFileInfo(f).lastModified().toSecsSinceEpoch();
+                        if(currentModTime > lastModified->get<qint64>()){
+                            this->updateEntry(f, relPath);
+                        }
+                    }else{
+                        this->eventListener.callOnError("file-entry is malformed; skipping", f);
+                        this->eventListener.callOnFileProcessed(f, false);
+                    }
+                }else{
+                    this->eventListener.callOnWarning("file has no saved hash; skipping", f);
+                    this->eventListener.callOnFileProcessed(f, false);//TODO maybe return true
+                }
+                break;
             }
         }
     }

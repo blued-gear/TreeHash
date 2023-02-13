@@ -161,7 +161,6 @@ private:
         d1False_hashes = QDir(d1False.path() + "/hashes");
 
         extractZip(":/testfiles/d1-false.zip", d1False);
-        auto a = d1False_data.exists();
         QVERIFY(d1False_data.exists());
         QVERIFY(d1False_hashes.exists());
 

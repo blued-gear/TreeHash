@@ -9,8 +9,8 @@
 
 using namespace TreeHash;
 
-/// test update of a hash-file with only missing files
-class UpdateNewTest : public QObject
+/// test update of a hash-file with only changed files
+class UpdateModifiedTest : public QObject
 {
     Q_OBJECT
 
@@ -18,8 +18,8 @@ private:
     TestFiles files;
 
 public:
-    UpdateNewTest(){}
-    ~UpdateNewTest(){}
+    UpdateModifiedTest(){}
+    ~UpdateModifiedTest(){}
 
 private slots:
     void initTestCase(){
@@ -32,7 +32,7 @@ private slots:
 
     void updateHashes(){
         QDir dataDir = files.getD1FalseData();
-        QString hashFile = files.getD1FalseMissingHashPath();
+        QString hashFile = files.getD1FalseHashFilePath();
 
         EventListener listener;
         listener.onError = [](QString msg, QString path) -> void{
@@ -52,7 +52,7 @@ private slots:
         QStringList paths = listAllFilesInDir(dataDir.path(), false, false);
 
         try{
-            treeHash.setMode(RunMode::UPDATE_NEW);
+            treeHash.setMode(RunMode::UPDATE_MODIFIED);
             treeHash.setRootDir(dataDir.path());
             treeHash.setHashesFilePath(hashFile);
             treeHash.setFiles(paths);
@@ -78,4 +78,4 @@ private slots:
 
 };
 
-#include "tst_updatenewtest.moc"
+#include "tst_updatemodifiedtest.moc"
