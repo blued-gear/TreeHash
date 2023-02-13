@@ -73,6 +73,10 @@ QStringList listFiles(QCommandLineParser& args){
         }
     }
 
+    // 4. remove hashfile
+    QFileInfo hashfileInfo(args.value("f"));
+    files.removeOne(hashfileInfo.absoluteFilePath());
+
     return files;
 }
 
