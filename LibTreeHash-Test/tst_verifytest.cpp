@@ -51,6 +51,7 @@ private slots:
         try{
             treeHash.setMode(RunMode::VERIFY);
             treeHash.setRootDir(dataDir.path());
+            treeHash.setHashAlgorithm(QCryptographicHash::Algorithm::Blake2b_256);
             treeHash.setHashesFilePath(verifyFilePath);
             treeHash.setFiles(paths);
 

@@ -102,6 +102,44 @@ public:
         return QFile(d2_expected);
     }
 
+    static QString compareHashFiles(const QJsonObject& actual, const QJsonObject& expected){
+        // check versions
+        {
+            const QString actualVer = actual.value("version").toString();
+            const QString expectedVer = expected.value("version").toString();
+            if(actualVer != expectedVer)
+                return QString("versions do not match (actual: %1, expected: %2)").arg(actualVer, expectedVer);
+            if(actualVer.isNull())
+                return QString("'version' in actual is malformed");
+        }
+
+        // compare hashes of files
+        {
+            if(!actual.value("files").isObject())
+                return QString("'files' actual is malformed");
+
+            const QJsonObject actualFiles = actual.value("files").toObject();
+            const QJsonObject expectedFiles = expected.value("files").toObject();
+            for(const auto& file : actualFiles.keys()) {
+                QString actualHash = actualFiles.value(file).toObject().value("hash").toString();
+                if(actualHash.isNull())
+                    return QString("file-obj in actual is malformed (file: %1)").arg(file);
+
+                if(!expectedFiles.contains(file))
+                    return QString("%1 was in actual but not in expected").arg(file);
+
+                if(actualHash != expectedFiles.value(file).toObject().value("hash").toString())
+                    return QString("actual and expected hashes do not match (file: %1)").arg(file);
+            }
+
+            if(actual.count() != expected.count())
+                return QString("actual and expected had different file-counts (actual: %1, expected: %2)").arg(actual.count(), expected.count());
+        }
+
+        // null-string means ok
+        return QString();
+    }
+
 private:
     void extractD1(){
         // create dirs
@@ -123,6 +161,7 @@ private:
         d1False_hashes = QDir(d1False.path() + "/hashes");
 
         extractZip(":/testfiles/d1-false.zip", d1False);
+        auto a = d1False_data.exists();
         QVERIFY(d1False_data.exists());
         QVERIFY(d1False_hashes.exists());
 

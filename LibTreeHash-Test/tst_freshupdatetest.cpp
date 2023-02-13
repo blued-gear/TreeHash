@@ -63,6 +63,7 @@ private slots:
         try{
             treeHash.setMode(RunMode::UPDATE);
             treeHash.setRootDir(dataDir.path());
+            treeHash.setHashAlgorithm(QCryptographicHash::Algorithm::Blake2b_256);
             treeHash.setHashesFilePath(hashFilesDir.filePath(hashFileName));
             treeHash.setFiles(paths);
 
@@ -80,7 +81,9 @@ private slots:
         actualJsonFile.open(QFile::OpenModeFlag::ReadOnly);
         QJsonObject actualJson = QJsonDocument::fromJson(actualJsonFile.readAll()).object();
 
-        QVERIFY2(expectedJson == actualJson, "created hash-file did not contain the expected content");
+        QString cmp = TestFiles::compareHashFiles(actualJson, expectedJson);
+        QVERIFY2(cmp.isNull(),
+                 QString("created hash-file did not contain the expected content (%1)").arg(cmp).toStdString().c_str());
     }
 
 };
