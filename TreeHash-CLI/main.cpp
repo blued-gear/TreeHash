@@ -87,7 +87,7 @@ void setupCommands(QCommandLineParser& parser){
     parser.addOptions({
         {{"m", "mode"},
             "mode of operation",
-            "'update' or 'verify'"},
+            "'update', 'update_new' or 'verify'"},
         {{"l", "loglevel"},
             "sets the verbosity of the log ('w' is default)",
             "'q' -> print nothing, 'e' -> show only errors, 'w' -> show errors and warnings, 'a' -> show erroes, warnings and processed files"},
@@ -165,6 +165,8 @@ int execNormal(QCommandLineParser& args){
     TreeHash::RunMode mode;
     if(modeStr == "update"){
         mode = TreeHash::RunMode::UPDATE;
+    }else if(modeStr == "update_new"){
+        mode = TreeHash::RunMode::UPDATE_NEW;
     }else if(modeStr == "verify"){
         mode = TreeHash::RunMode::VERIFY;
     }else{
