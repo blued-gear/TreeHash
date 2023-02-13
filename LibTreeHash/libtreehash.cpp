@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QCryptographicHash>
+#include <QMessageAuthenticationCode>
 #include <unistd.h>
 
 
@@ -21,6 +22,8 @@ public:
     EventListener eventListener;
     QFile hashFile;
     QStringList files;
+    QString hmacKey;
+
     QJsonObject hashes;
 
     bool loadHashes();
@@ -80,6 +83,14 @@ void LibTreeHash::setFiles(const QStringList paths)
 const QStringList LibTreeHash::getFiles()
 {
     return this->priv->files;
+}
+
+void LibTreeHash::setHmacKey(QString hmac){
+    this->priv->hmacKey = hmac;
+}
+
+QString LibTreeHash::getHmacKey(){
+    return this->priv->hmacKey;
 }
 
 void LibTreeHash::run(){
@@ -214,13 +225,26 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
         return QString();
     }
 
-    QCryptographicHash hash(HASH_ALGORITHM);
-    if(!hash.addData(&file)){
-        this->eventListener.callOnError(QStringLiteral("unable to read file"), path);
-        return QString();
-    }
+    if(this->hmacKey.isEmpty()){
+        // normal hash
+        QCryptographicHash hash(HASH_ALGORITHM);
+        if(!hash.addData(&file)){
+            this->eventListener.callOnError(QStringLiteral("unable to read file"), path);
+            return QString();
+        }
 
-    return QString(hash.result().toHex());
+        return QString(hash.result().toHex());
+    }else{
+        // use HMAC
+        QMessageAuthenticationCode hash(HASH_ALGORITHM);
+        hash.setKey(this->hmacKey.toUtf8());
+        if(!hash.addData(&file)){
+            this->eventListener.callOnError(QStringLiteral("unable to read file"), path);
+            return QString();
+        }
+
+        return QString(hash.result().toHex());
+    }
 }
 
 QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)

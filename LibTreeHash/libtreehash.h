@@ -98,6 +98,15 @@ public:
     }
 
     /**
+     * @brief sets the HMAC-Key for the hash-function; if it is empty then HMAC is disabled.
+     *      ATTENTION: do not change the value while a process is running
+     * @param the HMAC-Key ("" to switch to normal hash)
+     */
+    void setHmacKey(QString hmac);
+
+    QString getHmacKey();
+
+    /**
      * @brief the root-dir is used do create relative paths for the file-entries in the hash-file
      *      ATTENTION: do not change the root-dir while a process is running
      * @param dir the root dir
