@@ -7,12 +7,15 @@
 #include <QSet>
 #include <QMessageAuthenticationCode>
 #include <unistd.h>
+#include <qmetaobject.h>
 #include "ext/nlohmann/json.hpp"
 
 using namespace TreeHash;
 using namespace nlohmann;
 
 namespace TreeHash {
+std::string LibTreeHash::FILE_VERSION = "2.0";
+
 class LibTreeHashPrivate{
 public:
 
@@ -20,18 +23,23 @@ public:
     std::unique_ptr<QFileDevice> hashFileSrc, hashFileDst;
     bool truncateHashFileDst = true;
     QStringList files;
+    QString rootDir = QStringLiteral("/");
     QString hmacKey;
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Algorithm::Keccak_512;
 
-    json hashes;
+    json hashFileData;
 
-    bool storeHashes();
+    bool saveHashFile();
 
     void verifyEntry(const QString& file, const QString& relPath);
     void updateEntry(const QString& file, const QString& relPath);
 
-    void openHashFile(QString& rootDir);
-    void processFiles(RunMode runMode, QString& rootDir);
+    void openHashFile();
+
+    void loadSettings();
+    void storeSettings();
+
+    void processFiles(RunMode runMode);
     QString computeFileHash(QString path);
 
     static json loadHashes(QFileDevice& hashFile, QString* error);
@@ -69,6 +77,15 @@ LibTreeHash& LibTreeHash::operator=(LibTreeHash&& mve){
     return *this;
 }
 
+void LibTreeHash::setRootDir(QString dir){
+    QFileInfo fi(dir);
+    this->priv->rootDir = fi.canonicalFilePath();
+}
+
+QString LibTreeHash::getRootDir() const{
+    return this->priv->rootDir;
+}
+
 void LibTreeHash::setHashAlgorithm(QCryptographicHash::Algorithm alg){
     this->priv->hashAlgorithm = alg;
 }
@@ -87,8 +104,8 @@ void LibTreeHash::setHashesFilePath(const QString path){
             );
     }
 
-    auto srcFile = std::unique_ptr<QFileDevice>(new QFile(path));
-    auto dstFile = std::unique_ptr<QFileDevice>(new QFile(path));
+    auto srcFile = std::make_unique<QFile>(path);
+    auto dstFile = std::make_unique<QFile>(path);
     setHashesFile(std::move(srcFile), std::move(dstFile));
 }
 
@@ -104,6 +121,8 @@ void LibTreeHash::setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_
     this->priv->hashFileSrc = std::move(src);
     this->priv->hashFileDst = std::move(dst);
     this->priv->truncateHashFileDst = truncateDest;
+
+    this->priv->openHashFile();
 }
 
 const QFileDevice& LibTreeHash::getHashesFileSrc() const
@@ -139,26 +158,45 @@ void LibTreeHash::run(){
         throw std::invalid_argument(QStringLiteral("unable to open HashesFile source: %1").arg(openError).toStdString());
     }
 
-    if(this->runMode == RunMode::UPDATE || this->runMode == RunMode::UPDATE_NEW){
+    if(this->runMode == RunMode::UPDATE
+            || this->runMode == RunMode::UPDATE_NEW
+            || this->runMode == RunMode::UPDATE_MODIFIED){
         if(!LibTreeHashPrivate::ensureFileOpen(*this->priv->hashFileDst, true, &openError)){
             throw std::invalid_argument(QStringLiteral("unable to open HashesFile destination: %1").arg(openError).toStdString());
         }
     }
 
-    this->priv->openHashFile(this->rootDir);
+    QDir root(this->priv->rootDir);
+    if(!root.exists()){
+        this->priv->eventListener.callOnWarning(QStringLiteral("the root-dir does not exist"), QStringLiteral("run"));
+    }
 
-    this->priv->processFiles(this->runMode, this->rootDir);
+    // ensure files obj is present
+    this->priv->hashFileData.emplace("files", json::value_t::object);
 
-    if(this->runMode == RunMode::UPDATE || this->runMode == RunMode::UPDATE_NEW){
-        this->priv->storeHashes();
+    this->priv->processFiles(this->runMode);
+
+    if(this->runMode == RunMode::UPDATE
+            || this->runMode == RunMode::UPDATE_NEW
+            || this->runMode == RunMode::UPDATE_MODIFIED){
+        this->priv->saveHashFile();
     }
 }
 
-bool LibTreeHashPrivate::storeHashes(){
-    std::string jsonData = this->hashes.dump(4);
+bool LibTreeHashPrivate::saveHashFile(){
+    this->hashFileData["version"] = LibTreeHash::FILE_VERSION;
+    storeSettings();
+
+    std::string jsonData = this->hashFileData.dump(2);
 
     // rewrite file
     QFileDevice& file = *this->hashFileDst;
+    QString err;
+    if(!ensureFileOpen(file, true, &err)){
+        this->eventListener.callOnError(QStringLiteral("unable to save hashes (open): ") + err,
+                                        QStringLiteral("saving hashes"));
+        return false;
+    }
 
     if(this->truncateHashFileDst){
         if(!file.resize(0)){
@@ -180,6 +218,12 @@ bool LibTreeHashPrivate::storeHashes(){
     return true;
 }
 
+void LibTreeHashPrivate::storeSettings(){
+    json& settings = *this->hashFileData.emplace("settings", json::value_t::object).first;
+    settings["rootDir"] = this->rootDir.toStdString();
+    settings["hashAlgorithm"] = QMetaEnum::fromType<QCryptographicHash::Algorithm>().valueToKey(this->hashAlgorithm);
+}
+
 void LibTreeHashPrivate::verifyEntry(const QString& file, const QString& relPath){
     // compute hash
     QString hash = this->computeFileHash(file);
@@ -189,10 +233,12 @@ void LibTreeHashPrivate::verifyEntry(const QString& file, const QString& relPath
     }
 
     // compare with list
-    if(auto entry = this->hashes.find(relPath.toStdString()); entry != this->hashes.end()){
-        if(entry->is_string()){
-            std::string storedHash = *entry;
-            bool matches = storedHash.c_str() == hash;
+    const json& files = this->hashFileData["files"];
+    if(auto entry = files.find(relPath.toStdString()); entry != files.end()){
+        const auto storedHash = entry.value().find("hash");
+        if(storedHash != entry.value().end() && storedHash->is_string()){
+            std::string storedHashStr = storedHash->get<std::string>();
+            bool matches = storedHashStr.c_str() == hash;
             this->eventListener.callOnFileProcessed(file, matches);
         }else{
             this->eventListener.callOnError(QStringLiteral("stored hash is not of type string; skipping"), file);
@@ -200,7 +246,7 @@ void LibTreeHashPrivate::verifyEntry(const QString& file, const QString& relPath
         }
     }else{
         this->eventListener.callOnWarning(QStringLiteral("file has no saved hash; skipping"), file);
-        this->eventListener.callOnFileProcessed(file, false);
+        this->eventListener.callOnFileProcessed(file, false);//TODO maybe return true
     }
 }
 
@@ -211,27 +257,29 @@ void LibTreeHashPrivate::updateEntry(const QString& file, const QString& relPath
         return;
     }
 
-    this->hashes[relPath.toStdString()] = hash.toStdString();
+    qint64 lastModified = QFileInfo(file).lastModified().toSecsSinceEpoch();
+
+    json entry = json::object();
+    entry.emplace("hash", hash.toStdString());
+    entry.emplace("lastModified", lastModified);
+    this->hashFileData["files"][relPath.toStdString()] = entry;
 
     this->eventListener.callOnFileProcessed(file, true);
 }
 
-void LibTreeHashPrivate::openHashFile(QString& rootDir){
-    QDir root(rootDir);
-    if(!root.exists()){
-        this->eventListener.callOnWarning(QStringLiteral("the root-dir dies not exist"), QStringLiteral("run"));
-    }
-
+void LibTreeHashPrivate::openHashFile(){
     QString loadError;
-    this->hashes = LibTreeHashPrivate::loadHashes(*this->hashFileSrc, &loadError);
+    if(!ensureFileOpen(*this->hashFileSrc, false, &loadError))
+        return;
+    this->hashFileData = LibTreeHashPrivate::loadHashes(*this->hashFileSrc, &loadError);
     if(!loadError.isNull()){
-        this->eventListener.callOnError(loadError, QStringLiteral("loading hashes"));
+        this->eventListener.callOnError(loadError, QStringLiteral("loading hashfile"));
         return;
     }
 }
 
-void LibTreeHashPrivate::processFiles(RunMode runMode, QString& rootDir){
-    const QDir root(rootDir);
+void LibTreeHashPrivate::processFiles(RunMode runMode){
+    const QDir root(this->rootDir);
 
     QFileInfo fi;
     QString relPath;
@@ -259,9 +307,12 @@ void LibTreeHashPrivate::processFiles(RunMode runMode, QString& rootDir){
                 break;
             }
             case RunMode::UPDATE_NEW: {
-                if(!this->hashes.contains(relPath.toStdString())){
+                if(!this->hashFileData["files"].contains(relPath.toStdString())){
                     this->updateEntry(f, relPath);
                 }
+            }
+            case RunMode::UPDATE_MODIFIED: {
+                //TODO
             }
         }
     }
@@ -309,6 +360,18 @@ json LibTreeHashPrivate::loadHashes(QFileDevice& hashFile, QString* error){
         if(!loaded.is_object()){
             if(error != nullptr)
                 *error = "unable to load hash-file: file is malformed (expected JSON-Object)";
+            return json::object();
+        }
+
+        if(const auto& ver = loaded.find("version"); ver != loaded.end()){
+            if(ver->get<std::string>() != LibTreeHash::FILE_VERSION){
+                if(error != nullptr)
+                    *error = QStringLiteral("can not load version of hashfile");
+                return json::object();
+            }
+        }else{
+            if(error != nullptr)
+                *error = QStringLiteral("can not load version of hashfile");
             return json::object();
         }
 
@@ -401,17 +464,24 @@ void TreeHash::cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst,
     }
 
     QString loadError;
-    json hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
+    json hashFile = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
     if(!loadError.isNull()){
         if(error != nullptr)
-            *error = loadError;
+            *error = std::move(loadError);
+        return;
+    }
+
+    const auto hashes = hashFile.find("files");
+    if(hashes == hashFile.end()){
+        if(error != nullptr)
+            *error = QStringLiteral("hash-file is malformed");
         return;
     }
 
     // filter hashes
     QSet<QString> keepSet(keep.begin(), keep.end());
     json filteredHashes;
-    for(auto iter = hashes.begin(); iter != hashes.end(); iter++){
+    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
         QString f = QString::fromStdString(iter.key());
         QString absPath = rootDir.absoluteFilePath(f);
         if(keepSet.contains(f) || keepSet.contains(absPath)){
@@ -420,7 +490,8 @@ void TreeHash::cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst,
     }
 
     // save hashes
-    std::string jsonData = filteredHashes.dump(4);
+    hashFile["files"] = std::move(filteredHashes);
+    std::string jsonData = hashFile.dump(2);
 
     if(truncDst){
         if(!hashfileDst.resize(0)){
@@ -460,16 +531,23 @@ QStringList TreeHash::checkForRemovedFiles(QFileDevice& hashfileSrc, const QStri
         return QStringList();
 
     QString loadError;
-    json hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
+    json hashFile = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
     if(!loadError.isNull()){
         if(error != nullptr)
             *error = loadError;
         return QStringList();
     }
 
+    const auto hashes = hashFile.find("files");
+    if(hashes == hashFile.end()){
+        if(error != nullptr)
+            *error = QStringLiteral("hash-file is malformed");
+        return QStringList();
+    }
+
     // find all removed files
     QStringList removed;
-    for(auto iter = hashes.begin(); iter != hashes.end(); iter++){
+    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
         QString file = QString::fromStdString(iter.key());
         QString absPath = rootDir.absoluteFilePath(file);
         if(!files.contains(absPath)){

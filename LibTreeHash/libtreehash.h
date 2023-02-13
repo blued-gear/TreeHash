@@ -15,6 +15,8 @@ enum class RunMode{
     UPDATE,
     /// adds the hashes of new files
     UPDATE_NEW,
+    /// updates the hashes of new or recently modified files
+    UPDATE_MODIFIED,
     /// checks all files against the stored hashes
     VERIFY
 };
@@ -77,7 +79,6 @@ class LibTreeHash
 
     LibTreeHashPrivate* priv;
     RunMode runMode = RunMode::VERIFY;
-    QString rootDir = QStringLiteral("/");
 
 public:
     LibTreeHash(const EventListener& listener);
@@ -85,6 +86,8 @@ public:
     ~LibTreeHash();
 
     LibTreeHash& operator=(LibTreeHash&& mve);
+
+    static std::string FILE_VERSION;
 
     void run();
 
@@ -117,15 +120,11 @@ public:
      *      ATTENTION: do not change the root-dir while a process is running
      * @param dir the root dir
      */
-    void setRootDir(QString dir){
-        this->rootDir = dir;
-    }
+    void setRootDir(QString dir);
     /**
      * @brief return the current root-dir
      */
-    QString getRootDir() const{
-        return this->rootDir;
-    }
+    QString getRootDir() const;
 
     /**
      * @brief sets the hash-algorithm used for computing the file-hashes (default is QCryptographicHash::Algorithm::Keccak_512)
