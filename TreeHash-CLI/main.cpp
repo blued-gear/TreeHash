@@ -320,17 +320,38 @@ int execClean(QCommandLineParser& args){
         return -1;
     }
 
-    QFile hashfile(args.value("f"));
-    if(!hashfile.exists()){
-        std::cerr << "hash-file does not exist\n";
-        return -1;
+    bool hashfileFromStdin = args.value("f") == "-";
+
+    if(!hashfileFromStdin){
+        QFile hashfile(args.value("f"));
+        if(!hashfile.exists()){
+            std::cerr << "hash-file does not exist\n";
+            return -1;
+        }
     }
 
     QStringList keep = listFiles(args);
 
     try{
         QString err;
-        TreeHash::cleanHashFile(hashfile.fileName(), root.path(), keep, &err);
+
+        if(hashfileFromStdin){
+            QFile in;
+            QFile out;
+
+            if(!in.open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
+                std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in.errorString()).toStdString();
+                return -2;
+            }
+            if(!out.open(stdout, QFile::OpenModeFlag::WriteOnly, QFile::FileHandleFlag::DontCloseHandle)){
+                std::cerr << QStringLiteral("unable to open stdout (%1)\n").arg(out.errorString()).toStdString();
+                return -2;
+            }
+
+            TreeHash::cleanHashFile(in, out, root.path(), keep, &err, false);
+        }else{
+            TreeHash::cleanHashFile(args.value("f"), root.path(), keep, &err);
+        }
 
         if(!err.isNull()){
             std::cerr << "cleanHashFile returned with an error:\n" << err.toStdString() << '\n';
@@ -360,17 +381,34 @@ int execRemoved(QCommandLineParser& args){
         return -1;
     }
 
-    QFile hashfile(args.value("f"));
-    if(!hashfile.exists()){
-        std::cerr << "hash-file does not exist\n";
-        return -1;
+    bool hashfileFromStdin = args.value("f") == "-";
+
+    if(!hashfileFromStdin){
+        QFile hashfile(args.value("f"));
+        if(!hashfile.exists()){
+            std::cerr << "hash-file does not exist\n";
+            return -1;
+        }
     }
 
     QStringList existing = listFiles(args);
 
     try{
         QString err;
-        QStringList missing = TreeHash::checkForRemovedFiles(hashfile.fileName(), root.path(), existing, &err);
+        QStringList missing;
+
+        if(hashfileFromStdin){
+            QFile in;
+
+            if(!in.open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
+                std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in.errorString()).toStdString();
+                return -2;
+            }
+
+            missing = TreeHash::checkForRemovedFiles(in, root.path(), existing, &err);
+        }else{
+            missing = TreeHash::checkForRemovedFiles(args.value("f"), root.path(), existing, &err);
+        }
 
         if(!err.isNull()){
             std::cerr << "cleanHashFile returned with an error:\n" << err.toStdString() << '\n';
