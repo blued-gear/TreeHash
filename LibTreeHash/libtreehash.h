@@ -14,8 +14,10 @@ enum class RunMode{
 };
 
 class EventListener{
+
+    friend class LibTreeHash;
+
 public:
-    virtual ~EventListener() = default;
 
     /**
      * @brief called when a file was processed;
@@ -23,29 +25,35 @@ public:
      * @param path the path of the processed file
      * @param success UPDATE: if no error occurred; VERIFY: if the hash matched, if any existed
      */
-    virtual void onFileProcessed(QString path, bool success){
-        Q_UNUSED(path)
-        Q_UNUSED(success)
-    }
+    void (*onFileProcessed)(QString path, bool success) = nullptr;
     /**
      * @brief called when an anomaly occurred
      *      ATTENTION: this method should not throw an exception
      * @param msg a message
      * @param path location of anomaly (mostly a file path)
      */
-    virtual void onWarning(QString msg, QString path){
-        Q_UNUSED(msg)
-        Q_UNUSED(path);
-    }
+    void (*onWarning)(QString msg, QString path) = nullptr;
     /**
      * @brief called when an error occurred
      *      ATTENTION: this method should not throw an exception
      * @param msg a message
      * @param path location of error (mostly a file path)
      */
-    virtual void onError(QString msg, QString path){
-        Q_UNUSED(msg)
-        Q_UNUSED(path)
+    void (*onError)(QString msg, QString path) = nullptr;
+
+private:
+
+    void callOnFileProcessed(QString path, bool success){
+        if(onFileProcessed != nullptr)
+            (*onFileProcessed)(path, success);
+    }
+    void callOnWarning(QString msg, QString path){
+        if(onWarning != nullptr)
+            (*onWarning)(msg, path);
+    }
+    void callOnError(QString msg, QString path){
+        if(onError != nullptr)
+            (*onError)(msg, path);
     }
 
 };
