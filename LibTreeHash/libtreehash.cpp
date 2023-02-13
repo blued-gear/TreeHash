@@ -4,12 +4,12 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QStringList>
+#include <QSet>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
 #include <unistd.h>
-
 
 constexpr QCryptographicHash::Algorithm HASH_ALGORITHM = QCryptographicHash::Algorithm::Keccak_512;
 
@@ -268,4 +268,79 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
     }
 
     return ret;
+}
+
+void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath, QStringList keep, QString* error){
+    QDir rootDir(rootPath);
+    if(!rootDir.exists()){
+        if(error != nullptr)
+            *error = QStringLiteral("root does not exist");
+        return;
+    }
+
+    // read hashes
+    QFile hashFile(hashfilePath);
+    if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
+        if(error != nullptr)
+            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
+        return;
+    }
+    if(!hashFile.seek(0)){
+        if(error != nullptr)
+            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
+        return;
+    }
+
+    QJsonObject hashes;
+    if(hashFile.size() == 0){
+        // new file -> empty JsonObject
+        hashes = QJsonObject();
+    }else{
+        QJsonParseError parseErr;
+        QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
+
+        if(parseErr.error != QJsonParseError::NoError){
+            if(error != nullptr)
+                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
+            return;
+        }
+        if(!json.isObject()){
+            if(error != nullptr)
+                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
+            return;
+        }
+
+        hashes = json.object();
+    }
+
+    // filter hashes
+    QSet<QString> keepSet(keep.begin(), keep.end());
+    QJsonObject filteredHashes;
+    for(const QString& f : hashes.keys()){
+        QString absPath = rootDir.absoluteFilePath(f);
+        if(keepSet.contains(f) || keepSet.contains(absPath)){
+            filteredHashes.insert(f, hashes.value(f));
+        }
+    }
+
+    // save hashes
+    QJsonDocument json(filteredHashes);
+    QByteArray jsonData = json.toJson(QJsonDocument::JsonFormat::Indented);
+
+    if(!hashFile.resize(0)){
+        if(error != nullptr)
+            *error = QStringLiteral("unable to save hashes: ") + hashFile.errorString();
+        return;
+    }
+    if(hashFile.write(jsonData) == -1){
+        if(error != nullptr)
+            *error = QStringLiteral("unable to save hashes: ") + hashFile.errorString();
+        return;
+    }
+
+    hashFile.flush();
+    fsync(hashFile.handle());// without this the tests read only an empty file
+
+    if(error != nullptr)
+        *error = QString();
 }

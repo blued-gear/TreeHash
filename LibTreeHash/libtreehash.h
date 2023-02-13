@@ -154,6 +154,15 @@ public:
  * @return a list with the paths of all files in root
  */
 QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles);
+
+/**
+ * @brief removes all entries from the given hash-file which does not exist in keep
+ * @param hashfilePath path to the hash-file
+ * @param rootPath the path to the root-dir (to generate relative file-paths)
+ * @param keep list with files to keep (either absolute paths or paths relative to root)
+ * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
+ */
+void cleanHashFile(const QString hashfilePath, const QString rootPath, QStringList keep, QString* error = nullptr);
 }
 
 #endif // LIBTREEHASH_H
