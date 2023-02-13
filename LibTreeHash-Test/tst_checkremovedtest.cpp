@@ -38,12 +38,29 @@ private slots:
 
         QStringList existing = TreeHash::listAllFilesInDir(root, false, false);
 
-        QString err("_");
-        QStringList missing = TreeHash::checkForRemovedFiles(hashfile, root, existing, &err);
+        TreeHash::EventListener listener;
+        listener.onError = [](QString msg, QString path) -> void{
+            QVERIFY2(false, ("treeHash reported error: " + msg).toStdString().c_str());
+        };
+        listener.onWarning = [](QString msg, QString path) -> void{
+            QVERIFY2(false, ("treeHash reported warning: " + msg).toStdString().c_str());
+        };
+        listener.onFileProcessed = [](QString path, bool success) -> void{
+            QVERIFY2(false, ("treeHash reported a process file: " + path).toStdString().c_str());
+        };
 
-        QVERIFY(err.isNull());
-        QVERIFY(missing.size() == 1);
-        QVERIFY(missing.at(0) == "d1/d2/f3.dat");
+        TreeHash::LibTreeHash treeHash(listener);
+
+        try {
+            treeHash.setHashesFilePath(hashfile);
+            treeHash.setRootDir(root);
+            QStringList missing = treeHash.checkForRemovedFiles(existing);
+
+            QVERIFY(missing.size() == 1);
+            QVERIFY(missing.at(0) == "d1/d2/f3.dat");
+        } catch (...) {
+            QVERIFY2(false, "treeHash threw exception");
+        }
     }
 
 };

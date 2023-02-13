@@ -40,9 +40,26 @@ private slots:
         QStringList keep;
         keep << "d1/d2/f3.dat" << (rootPath + "/d1/f2.dat");
 
-        QString err("_");
-        TreeHash::cleanHashFile(hashfilePath, rootPath, keep, &err);
-        QVERIFY(err.isNull());
+        TreeHash::EventListener listener;
+        listener.onError = [](QString msg, QString path) -> void{
+            QVERIFY2(false, ("treeHash reported error: " + msg).toStdString().c_str());
+        };
+        listener.onWarning = [](QString msg, QString path) -> void{
+            QVERIFY2(false, ("treeHash reported warning: " + msg).toStdString().c_str());
+        };
+        listener.onFileProcessed = [](QString path, bool success) -> void{
+            QVERIFY2(false, ("treeHash reported a process file: " + path).toStdString().c_str());
+        };
+
+        TreeHash::LibTreeHash treeHash(listener);
+
+        try {
+            treeHash.setHashesFilePath(hashfilePath);
+            treeHash.setRootDir(rootPath);
+            treeHash.cleanHashFile(keep);
+        } catch (...) {
+            QVERIFY2(false, "treeHash threw exception");
+        }
 
         // verify hashfile
         expectedJson.remove("d1/f1.dat");
