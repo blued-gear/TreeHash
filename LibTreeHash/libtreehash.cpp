@@ -344,3 +344,60 @@ void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath,
     if(error != nullptr)
         *error = QString();
 }
+
+QStringList TreeHash::checkForRemovedFiles(const QString hashfilePath, const QString rootPath, const QStringList files, QString* error){
+    QDir rootDir(rootPath);
+    if(!rootDir.exists()){
+        if(error != nullptr)
+            *error = QStringLiteral("root does not exist");
+        return QStringList();
+    }
+
+    // read hashes
+    QFile hashFile(hashfilePath);
+    if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
+        if(error != nullptr)
+            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
+        return QStringList();
+    }
+    if(!hashFile.seek(0)){
+        if(error != nullptr)
+            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
+        return QStringList();
+    }
+
+    QJsonObject hashes;
+    if(hashFile.size() == 0){
+        // new file -> empty JsonObject
+        hashes = QJsonObject();
+    }else{
+        QJsonParseError parseErr;
+        QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
+
+        if(parseErr.error != QJsonParseError::NoError){
+            if(error != nullptr)
+                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
+            return QStringList();
+        }
+        if(!json.isObject()){
+            if(error != nullptr)
+                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
+            return QStringList();
+        }
+
+        hashes = json.object();
+    }
+
+    // find all removed files
+    QStringList removed;
+    for(const QString& file : hashes.keys()){
+        QString absPath = rootDir.absoluteFilePath(file);
+        if(!files.contains(absPath)){
+            removed.append(file);
+        }
+    }
+
+    if(error != nullptr)
+        *error = QString();
+    return removed;
+}

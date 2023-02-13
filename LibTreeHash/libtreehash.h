@@ -163,6 +163,16 @@ QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool i
  * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
  */
 void cleanHashFile(const QString hashfilePath, const QString rootPath, QStringList keep, QString* error = nullptr);
+
+/**
+ * @brief finds all files in which does not exist in the hash-file
+ * @param hashfilePath path to the hash-file
+ * @param rootPath the path to the root-dir (to generate relative file-paths)
+ * @param files list of all files (absolute paths) to be counted as existing
+ * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
+ * @return a list with all paths (relative to rootPath) which did not occur in the hash-file
+ */
+QStringList checkForRemovedFiles(const QString hashfilePath, const QString rootPath, const QStringList files, QString* error = nullptr);
 }
 
 #endif // LIBTREEHASH_H
