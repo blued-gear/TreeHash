@@ -171,9 +171,9 @@ private:
 
     void extractResFile(QString src, QString dest){
         QFile srcFile(src);
-        srcFile.open(QFile::OpenModeFlag::ReadOnly);
+        Q_ASSERT(srcFile.open(QFile::OpenModeFlag::ReadOnly));
         QFile destFile(dest);
-        destFile.open(QFile::OpenModeFlag::WriteOnly);
+        Q_ASSERT(destFile.open(QFile::OpenModeFlag::WriteOnly));
         destFile.write(srcFile.readAll());
         destFile.flush();
     }
