@@ -95,7 +95,7 @@ public:
     /**
      * @brief returns the current mode of execution
      */
-    RunMode getRunMode(){
+    RunMode getRunMode() const{
         return this->runMode;
     }
 
@@ -106,7 +106,7 @@ public:
      */
     void setHmacKey(QString hmac);
 
-    QString getHmacKey();
+    QString getHmacKey() const;
 
     /**
      * @brief the root-dir is used do create relative paths for the file-entries in the hash-file
@@ -119,7 +119,7 @@ public:
     /**
      * @brief return the current root-dir
      */
-    QString getRootDir(){
+    QString getRootDir() const{
         return this->rootDir;
     }
 
@@ -133,7 +133,7 @@ public:
     /**
      * @brief returns the path of the currently used hash-file
      */
-    const QString getHashesFile();
+    const QString getHashesFile() const;
 
     /**
      * @brief sets all files to process
@@ -145,7 +145,7 @@ public:
     /**
      * @brief returns the paths of all files which will be (or are) processed
      */
-    const QStringList getFiles();
+    const QStringList getFiles() const;
 };
 
 /**

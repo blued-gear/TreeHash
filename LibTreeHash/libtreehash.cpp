@@ -76,7 +76,7 @@ void LibTreeHash::setHashesFile(const QString path)
     file.setFileName(path);
 }
 
-const QString LibTreeHash::getHashesFile()
+const QString LibTreeHash::getHashesFile() const
 {
     return this->priv->hashFile.fileName();
 }
@@ -86,7 +86,7 @@ void LibTreeHash::setFiles(const QStringList paths)
     this->priv->files = paths;
 }
 
-const QStringList LibTreeHash::getFiles()
+const QStringList LibTreeHash::getFiles() const
 {
     return this->priv->files;
 }
@@ -95,7 +95,7 @@ void LibTreeHash::setHmacKey(QString hmac){
     this->priv->hmacKey = hmac;
 }
 
-QString LibTreeHash::getHmacKey(){
+QString LibTreeHash::getHmacKey() const{
     return this->priv->hmacKey;
 }
 
