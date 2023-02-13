@@ -26,15 +26,16 @@ public:
 
     QJsonObject hashes;
 
-    bool loadHashes();
     bool storeHashes();
 
     void verifyEntry(const QString& file, const QString& relPath);
     void updateEntry(const QString& file, const QString& relPath);
 
-    void openHashFile(RunMode runMode, QString& rootDir);
+    void openHashFile(QString& rootDir);
     void processFiles(RunMode runMode, QString& rootDir);
     QString computeFileHash(QString path);
+
+    static QJsonObject loadHashes(QFile& hashFile, QString* error);
 };
 }
 
@@ -99,39 +100,12 @@ QString LibTreeHash::getHmacKey(){
 }
 
 void LibTreeHash::run(){//TODO use cleaned paths (without '.') in log-messages
-    this->priv->openHashFile(this->runMode, this->rootDir);
+    this->priv->openHashFile(this->rootDir);
 
     this->priv->processFiles(this->runMode, this->rootDir);
 
     if(this->runMode == RunMode::UPDATE || this->runMode == RunMode::UPDATE_NEW){
         this->priv->storeHashes();
-    }
-}
-
-bool LibTreeHashPrivate::loadHashes(){
-    if(this->hashFile.size() == 0){
-        // new file -> empty JsonObject
-        this->hashes = QJsonObject();
-        return true;
-    }else{
-        this->hashFile.seek(0);
-        QJsonParseError parseErr;
-        QJsonDocument json = QJsonDocument::fromJson(this->hashFile.readAll(), &parseErr);
-
-        if(parseErr.error != QJsonParseError::NoError){
-            this->eventListener.callOnError(QStringLiteral("unable to load hashes: file is malformed (invalid JSON)"),
-                                            QStringLiteral("loading hashes"));
-            return false;
-        }
-
-        if(!json.isObject()){
-            this->eventListener.callOnError(QStringLiteral("unable to load hashes: file is malformed (expected JSON-Object)"),
-                                            QStringLiteral("loading hashes"));
-            return false;
-        }
-
-        this->hashes = json.object();
-        return true;
     }
 }
 
@@ -194,23 +168,17 @@ void LibTreeHashPrivate::updateEntry(const QString& file, const QString& relPath
     this->eventListener.callOnFileProcessed(file, true);
 }
 
-void LibTreeHashPrivate::openHashFile(RunMode runMode, QString& rootDir){
-    auto openFlags = runMode == RunMode::VERIFY ? QFile::OpenModeFlag::ReadOnly
-                                                      : (QFile::OpenModeFlag::ReadWrite | QFile::OpenModeFlag::Append);
-    QFile& hashFile = this->hashFile;
-    if(!hashFile.open(openFlags)){
-        QString fileErr = hashFile.errorString();
-        this->eventListener.callOnError(QStringLiteral("unable to load hashes: can not open file (%1)").arg(fileErr),
-                                              QStringLiteral("loading hashes"));
-        return;
-    }
-
-    if(!this->loadHashes())
-        return;
-
+void LibTreeHashPrivate::openHashFile(QString& rootDir){
     QDir root(rootDir);
     if(!root.exists()){
         this->eventListener.callOnWarning(QStringLiteral("the root-dir dies not exist"), QStringLiteral("run"));
+    }
+
+    QString loadError;
+    this->hashes = LibTreeHashPrivate::loadHashes(this->hashFile, &loadError);
+    if(!loadError.isNull()){
+        this->eventListener.callOnError(loadError, QStringLiteral("loading hashes"));
+        return;
     }
 }
 
@@ -281,6 +249,48 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
     }
 }
 
+QJsonObject LibTreeHashPrivate::loadHashes(QFile& hashFile, QString* error){
+    if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
+        if(error != nullptr){
+            QString fileErr = hashFile.errorString();
+            *error = QStringLiteral("unable to load hashes: can not open file (%1)").arg(fileErr);
+        }
+
+        return QJsonObject();
+    }
+    if(!hashFile.seek(0)){
+        if(error != nullptr){
+            QString fileErr = hashFile.errorString();
+            *error =  QStringLiteral("unable to load hashes: can not seek in file (%1)").arg(fileErr);
+        }
+
+        return QJsonObject();
+    }
+
+    if(hashFile.size() == 0){
+        // new file -> empty JsonObject
+        return QJsonObject();
+    }else{
+        hashFile.seek(0);
+        QJsonParseError parseErr;
+        QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
+
+        if(parseErr.error != QJsonParseError::NoError){
+            *error = "unable to load hashes: file is malformed (invalid JSON)";
+
+            return QJsonObject();
+        }
+
+        if(!json.isObject()){
+            *error = "unable to load hashes: file is malformed (expected JSON-Object)";
+
+            return QJsonObject();
+        }
+
+        return json.object();
+    }
+}
+
 QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)
 {
     if(!QFileInfo(root).isDir()){
@@ -313,39 +323,12 @@ void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath,
         return;
     }
 
-    // read hashes
     QFile hashFile(hashfilePath);
-    if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
-        if(error != nullptr)
-            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
+    QString loadError;
+    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashFile, &loadError);
+    if(!loadError.isNull()){
+        *error = loadError;
         return;
-    }
-    if(!hashFile.seek(0)){
-        if(error != nullptr)
-            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
-        return;
-    }
-
-    QJsonObject hashes;
-    if(hashFile.size() == 0){
-        // new file -> empty JsonObject
-        hashes = QJsonObject();
-    }else{
-        QJsonParseError parseErr;
-        QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
-
-        if(parseErr.error != QJsonParseError::NoError){
-            if(error != nullptr)
-                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
-            return;
-        }
-        if(!json.isObject()){
-            if(error != nullptr)
-                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
-            return;
-        }
-
-        hashes = json.object();
     }
 
     // filter hashes
@@ -388,39 +371,12 @@ QStringList TreeHash::checkForRemovedFiles(const QString hashfilePath, const QSt
         return QStringList();
     }
 
-    // read hashes
     QFile hashFile(hashfilePath);
-    if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
-        if(error != nullptr)
-            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
+    QString loadError;
+    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashFile, &loadError);
+    if(!loadError.isNull()){
+        *error = loadError;
         return QStringList();
-    }
-    if(!hashFile.seek(0)){
-        if(error != nullptr)
-            *error = QStringLiteral("unable to open hash-file: ") + hashFile.errorString();
-        return QStringList();
-    }
-
-    QJsonObject hashes;
-    if(hashFile.size() == 0){
-        // new file -> empty JsonObject
-        hashes = QJsonObject();
-    }else{
-        QJsonParseError parseErr;
-        QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
-
-        if(parseErr.error != QJsonParseError::NoError){
-            if(error != nullptr)
-                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
-            return QStringList();
-        }
-        if(!json.isObject()){
-            if(error != nullptr)
-                *error = QStringLiteral("unable to load hashes: file is malformed (invalid JSON)");
-            return QStringList();
-        }
-
-        hashes = json.object();
     }
 
     // find all removed files
