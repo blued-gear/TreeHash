@@ -390,6 +390,18 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
 }
 
 void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath, QStringList keep, QString* error){
+    QFile src(hashfilePath);
+    QFile dst(hashfilePath);
+    cleanHashFile(src, dst, rootPath, keep, error);
+}
+
+void TreeHash::cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst, const QString rootPath,
+                             QStringList keep, QString* error, bool truncDst){
+    if(!LibTreeHashPrivate::ensureFileOpen(hashfileSrc, false, error))
+        return;
+    if(!LibTreeHashPrivate::ensureFileOpen(hashfileDst, true, error))
+        return;
+
     QDir rootDir(rootPath);
     if(!rootDir.exists()){
         if(error != nullptr)
@@ -397,9 +409,8 @@ void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath,
         return;
     }
 
-    QFile hashFile(hashfilePath);
     QString loadError;
-    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashFile, &loadError);
+    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
     if(!loadError.isNull()){
         *error = loadError;
         return;
@@ -419,35 +430,46 @@ void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath,
     QJsonDocument json(filteredHashes);
     QByteArray jsonData = json.toJson(QJsonDocument::JsonFormat::Indented);
 
-    if(!hashFile.resize(0)){
-        if(error != nullptr)
-            *error = QStringLiteral("unable to save hashes: ") + hashFile.errorString();
-        return;
+    if(truncDst){
+        if(!hashfileDst.resize(0)){
+            if(error != nullptr)
+                *error = QStringLiteral("unable to save hashes: ") + hashfileDst.errorString();
+            return;
+        }
     }
-    if(hashFile.write(jsonData) == -1){
+
+    if(hashfileDst.write(jsonData) == -1){
         if(error != nullptr)
-            *error = QStringLiteral("unable to save hashes: ") + hashFile.errorString();
+            *error = QStringLiteral("unable to save hashes: ") + hashfileDst.errorString();
         return;
     }
 
-    hashFile.flush();
-    fsync(hashFile.handle());// without this the tests read only an empty file
+    hashfileDst.flush();
+    fsync(hashfileDst.handle());// without this the tests read only an empty file
 
     if(error != nullptr)
         *error = QString();
 }
 
 QStringList TreeHash::checkForRemovedFiles(const QString hashfilePath, const QString rootPath, const QStringList files, QString* error){
+    QFile src(hashfilePath);
+    return checkForRemovedFiles(src, rootPath, files, error);
+}
+
+QStringList TreeHash::checkForRemovedFiles(QFileDevice& hashfileSrc, const QString rootPath, const QStringList files, QString* error){
     QDir rootDir(rootPath);
     if(!rootDir.exists()){
         if(error != nullptr)
             *error = QStringLiteral("root does not exist");
+
         return QStringList();
     }
 
-    QFile hashFile(hashfilePath);
+    if(!LibTreeHashPrivate::ensureFileOpen(hashfileSrc, false, error))
+        return QStringList();
+
     QString loadError;
-    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashFile, &loadError);
+    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
     if(!loadError.isNull()){
         *error = loadError;
         return QStringList();
