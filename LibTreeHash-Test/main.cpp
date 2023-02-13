@@ -1,6 +1,7 @@
 #include "tst_freshupdatetest.cpp"
 #include "tst_verifytest.cpp"
 #include "tst_partialupdatetest.cpp"
+#include "tst_updatenewtest.cpp"
 #include "tst_hmacupdatetest.cpp"
 #include "tst_cleanhashfiletest.cpp"
 #include "tst_checkremovedtest.cpp"
@@ -20,6 +21,11 @@ int main(int argc, char** argv){
 
     {
         PartialUpdateTest test;
+        status |= QTest::qExec(&test, argc, argv);
+    }
+
+    {
+        UpdateNewTest test;
         status |= QTest::qExec(&test, argc, argv);
     }
 

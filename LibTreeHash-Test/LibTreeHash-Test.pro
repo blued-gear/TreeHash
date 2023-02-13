@@ -13,6 +13,7 @@ SOURCES +=  \
     tst_freshupdatetest.cpp \
     tst_hmacupdatetest.cpp \
     tst_partialupdatetest.cpp \
+    tst_updatenewtest.cpp \
     tst_verifytest.cpp
 
 HEADERS += \

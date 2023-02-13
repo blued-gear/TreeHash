@@ -17,7 +17,7 @@ class TestFiles{
     QString d1_expected;
 
     QDir d1False, d1False_data, d1False_hashes;
-    QString d1False_hashfile, d1False_hashfile2;
+    QString d1False_hashfile, d1False_hashfile2, d1False_hashfile3;
 
     QDir d2, d2_data, d2_hashes;
     QString d2_expected;
@@ -59,6 +59,7 @@ public:
         d1False_hashes.setPath(emptyPath);
         d1False_hashfile = emptyPath;
         d1False_hashfile2 = emptyPath;
+        d1False_hashfile3 = emptyPath;
         d2.setPath(emptyPath);
         d2_data.setPath(emptyPath);
         d2_hashes.setPath(emptyPath);
@@ -86,6 +87,9 @@ public:
     }
     QString getD1FalseExpectedHashPath(){
         return d1False_hashfile2;
+    }
+    QString getD1FalseMissingHashPath(){
+        return d1False_hashfile3;
     }
 
     QDir getD2Data(){
@@ -124,6 +128,7 @@ private:
 
         d1False_hashfile = d1False_hashes.path() + "/hashes.json";
         d1False_hashfile2 = d1False_hashes.path() + "/expected.json";
+        d1False_hashfile3 = d1False_hashes.path() + "/hashes-missing.json";
     }
 
     void extractD2(){
