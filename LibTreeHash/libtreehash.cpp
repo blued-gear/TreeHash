@@ -59,12 +59,15 @@ public:
 };
 }
 
-LibTreeHash::LibTreeHash(const EventListener& listener)
+LibTreeHash::LibTreeHash(const EventListener& listener, bool autosave)
+    : autosave(autosave)
 {
     this->priv = new LibTreeHashPrivate();
     this->priv->eventListener = listener;
 }
-LibTreeHash::LibTreeHash(LibTreeHash&& mve){
+LibTreeHash::LibTreeHash(LibTreeHash&& mve)
+    : autosave(mve.autosave)
+{
     this->priv = mve.priv;
     mve.priv = nullptr;
     this->runMode = mve.runMode;
@@ -181,11 +184,16 @@ void LibTreeHash::run(){
 
     this->priv->processFiles(this->runMode);
 
-    if(this->runMode == RunMode::UPDATE
+    if(this->autosave &&
+            (this->runMode == RunMode::UPDATE
             || this->runMode == RunMode::UPDATE_NEW
-            || this->runMode == RunMode::UPDATE_MODIFIED){
-        this->priv->saveHashFile();
+            || this->runMode == RunMode::UPDATE_MODIFIED)){
+        saveHashFile();
     }
+}
+
+void LibTreeHash::saveHashFile(){
+    this->priv->saveHashFile();
 }
 
 bool LibTreeHashPrivate::saveHashFile(){
@@ -509,7 +517,8 @@ void LibTreeHash::cleanHashFile(const QStringList& keep){
         }
     }
 
-    this->priv->saveHashFile();
+    if(this->autosave)
+        saveHashFile();
 }
 
 QStringList LibTreeHash::checkForRemovedFiles(const QStringList& files){

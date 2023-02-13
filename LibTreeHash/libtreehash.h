@@ -79,9 +79,15 @@ class LibTreeHash
 
     LibTreeHashPrivate* priv;
     RunMode runMode = RunMode::VERIFY;
+    const bool autosave;
 
 public:
-    LibTreeHash(const EventListener& listener);
+    /**
+     * @brief LibTreeHash
+     * @param listener the eventlistener to report events to
+     * @param autosave if true saveHashFile() will be called after every modifying action (run(), cleanHashFile())
+     */
+    LibTreeHash(const EventListener& listener, bool autosave = true);
     LibTreeHash(LibTreeHash&& mve);
     ~LibTreeHash();
 
@@ -90,6 +96,8 @@ public:
     static std::string FILE_VERSION;
 
     void run();
+
+    void saveHashFile();
 
     /**
      * @brief sets the mode of operation.
