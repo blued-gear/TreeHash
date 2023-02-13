@@ -298,15 +298,26 @@ int execRemoved(QCommandLineParser& args){
         QFileInfo fi;
         for(const QString& e : args.values("e")){
             QString path = root.absoluteFilePath(e);
+            QString relPath = root.relativeFilePath(e);
             fi.setFile(path);
 
             if(fi.isDir()){
                 // remove subtree
-                missing.removeIf([path](const QString& entry) -> bool{
-                    return entry.startsWith(path);
+                missing.removeIf([relPath](const QString& entry) -> bool{
+                    return entry.startsWith(relPath);
                 });
             }else if(fi.isFile()){
                 missing.removeOne(path);
+            }else if(!fi.exists()){
+                // missing paths also can be excluded -> QFileInfo can not determine type -> use heuristic: if paths ends with '/' it is treated as a dir
+                if(e.endsWith("/")){
+                    // remove subtree
+                    missing.removeIf([relPath](const QString& entry) -> bool{
+                        return entry.startsWith(relPath);
+                    });
+                }else{
+                    missing.removeOne(path);
+                }
             }
         }
 
