@@ -67,7 +67,7 @@ void setupCommands(QCommandLineParser& parser){
     parser.setSingleDashWordOptionMode(QCommandLineParser::SingleDashWordOptionMode::ParseAsCompactedShortOptions);
     parser.setOptionsAfterPositionalArgumentsMode(QCommandLineParser::OptionsAfterPositionalArgumentsMode::ParseAsOptions);
 
-    Q_ASSERT(parser.addOptions({
+    parser.addOptions({
         {{"m", "mode"},
             "mode of operation",
             "'update' or 'verify'"},
@@ -97,7 +97,7 @@ void setupCommands(QCommandLineParser& parser){
             "exclude linked directories from scan"},
         {"no-linked-files",
             "exclude linked files from scan"}
-    }));
+    });
 
     parser.addHelpOption();
     parser.addVersionOption();
