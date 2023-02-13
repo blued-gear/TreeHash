@@ -51,7 +51,7 @@ private slots:
         try{
             treeHash.setMode(RunMode::VERIFY);
             treeHash.setRootDir(dataDir.path());
-            treeHash.setHashesFile(verifyFilePath);
+            treeHash.setHashesFilePath(verifyFilePath);
             treeHash.setFiles(paths);
 
             treeHash.run();
@@ -97,7 +97,7 @@ private slots:
         try{
             treeHash.setMode(RunMode::VERIFY);
             treeHash.setRootDir(dataDir.path());
-            treeHash.setHashesFile(verifyFilePath);
+            treeHash.setHashesFilePath(verifyFilePath);
             treeHash.setFiles(paths);
 
             treeHash.run();

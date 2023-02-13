@@ -63,7 +63,7 @@ private slots:
         try{
             treeHash.setMode(RunMode::UPDATE);
             treeHash.setRootDir(dataDir.path());
-            treeHash.setHashesFile(hashFilesDir.filePath(hashFileName));
+            treeHash.setHashesFilePath(hashFilesDir.filePath(hashFileName));
             treeHash.setFiles(paths);
 
             treeHash.run();

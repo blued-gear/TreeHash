@@ -256,7 +256,7 @@ int execNormal(QCommandLineParser& args){
         treeHash.setMode(mode);
         treeHash.setHashAlgorithm(hashAlg);
         treeHash.setRootDir(args.value("r"));
-        treeHash.setHashesFile(args.value("f"));
+        treeHash.setHashesFilePath(args.value("f"));
         treeHash.setFiles(listFiles(args));
         treeHash.setHmacKey(args.value("k"));
 
