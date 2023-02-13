@@ -8,6 +8,7 @@ TEMPLATE = app
 
 SOURCES +=  \
     main.cpp \
+    tst_checkremovedtest.cpp \
     tst_cleanhashfiletest.cpp \
     tst_freshupdatetest.cpp \
     tst_hmacupdatetest.cpp \
