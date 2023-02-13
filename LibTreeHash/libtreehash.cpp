@@ -256,7 +256,8 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
     QDirIterator::IteratorFlags iterFlags = QDirIterator::IteratorFlag::Subdirectories;
     if(includeLinkedDirs)
         iterFlags |= QDirIterator::IteratorFlag::FollowSymlinks;
-    QDirIterator iter(root, iterFlags);
+    QDir::Filters iterFilter = QDir::Filter::AllEntries | QDir::Filter::Hidden | QDir::Filter::NoDotAndDotDot;
+    QDirIterator iter(root, iterFilter, iterFlags);
 
     QStringList ret;
     while(iter.hasNext()){
