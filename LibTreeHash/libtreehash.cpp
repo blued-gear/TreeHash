@@ -298,45 +298,25 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
 }
 
 QJsonObject LibTreeHashPrivate::loadHashes(QFileDevice& hashFile, QString* error){
-    if(!hashFile.isOpen()){
-        if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
-            if(error != nullptr){
-                QString fileErr = hashFile.errorString();
-                *error = QStringLiteral("unable to load hashes: can not open file (%1)").arg(fileErr);
-            }
+    QJsonParseError parseErr;
+    QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
 
-            return QJsonObject();
-        }
-    }else{
-        if(!hashFile.isReadable()){
-            *error = QStringLiteral("source for HashesFile is not readable");
 
-            return QJsonObject();
-        }
-    }
-
-    if(hashFile.size() == 0){
-        // new file -> empty JsonObject
-        return QJsonObject();
-    }else{
-        hashFile.seek(0);
-        QJsonParseError parseErr;
-        QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
-
-        if(parseErr.error != QJsonParseError::NoError){
+    if(parseErr.error != QJsonParseError::NoError){
+        if(parseErr.error != QJsonParseError::IllegalValue || hashFile.size() != 0){
             *error = "unable to load hashes: file is malformed (invalid JSON)";
+        }// else -> it was probably an empty file
 
-            return QJsonObject();
-        }
-
-        if(!json.isObject()){
-            *error = "unable to load hashes: file is malformed (expected JSON-Object)";
-
-            return QJsonObject();
-        }
-
-        return json.object();
+        return QJsonObject();
     }
+
+    if(!json.isObject()){
+        *error = "unable to load hashes: file is malformed (expected JSON-Object)";
+
+        return QJsonObject();
+    }
+
+    return json.object();
 }
 
 bool LibTreeHashPrivate::ensureFileOpen(QFileDevice& file, bool write, QString* error){
