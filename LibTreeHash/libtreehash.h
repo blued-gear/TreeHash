@@ -172,6 +172,19 @@ public:
      * @brief returns the paths of all files which will be (or are) processed
      */
     const QStringList getFiles() const;
+
+    /**
+     * @brief removes all entries from the given hash-file which does not exist in keep
+     * @param keep list with files to keep (either absolute paths or paths relative to root)
+     */
+    void cleanHashFile(const QStringList& keep);
+
+    /**
+     * @brief finds all files in which does not exist in the hash-file
+     * @param files list of all files (absolute paths) to be counted as existing
+     * @return a list with all paths (relative to rootPath) which did not occur in the hash-file
+     */
+    QStringList checkForRemovedFiles(const QStringList& files);
 };
 
 /**
@@ -182,47 +195,6 @@ public:
  * @return a list with the absolute paths of all files in root
  */
 QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles);
-
-/**
- * @brief removes all entries from the given hash-file which does not exist in keep
- * @param hashfilePath path to the hash-file
- * @param rootPath the path to the root-dir (to generate relative file-paths)
- * @param keep list with files to keep (either absolute paths or paths relative to root)
- * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
- */
-void cleanHashFile(const QString hashfilePath, const QString rootPath, QStringList keep, QString* error = nullptr);
-
-/**
- * @brief removes all entries from the given hash-file which does not exist in keep
- * @param hashfileSrc hash-file to read from
- * @param hashfileDst hash-file to write the updated contents to
- * @param rootPath the path to the root-dir (to generate relative file-paths)
- * @param keep list with files to keep (either absolute paths or paths relative to root)
- * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
- * @param truncDst if true then hashfileDst will be truncated before the updated contents are written
- */
-void cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst, const QString rootPath,
-                   QStringList keep, QString* error = nullptr, bool truncDst = true);
-
-/**
- * @brief finds all files in which does not exist in the hash-file
- * @param hashfilePath path to the hash-file
- * @param rootPath the path to the root-dir (to generate relative file-paths)
- * @param files list of all files (absolute paths) to be counted as existing
- * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
- * @return a list with all paths (relative to rootPath) which did not occur in the hash-file
- */
-QStringList checkForRemovedFiles(const QString hashfilePath, const QString rootPath, const QStringList files, QString* error = nullptr);
-
-/**
- * @brief finds all files in which does not exist in the hash-file
- * @param hashfileSrc hash-file to read from
- * @param rootPath the path to the root-dir (to generate relative file-paths)
- * @param files list of all files (absolute paths) to be counted as existing
- * @param error if not nullptr error messages will be stored in error; if successful error will be a null-string
- * @return a list with all paths (relative to rootPath) which did not occur in the hash-file
- */
-QStringList checkForRemovedFiles(QFileDevice& hashfileSrc, const QString rootPath, const QStringList files, QString* error = nullptr);
 }
 
 #endif // LIBTREEHASH_H

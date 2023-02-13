@@ -477,6 +477,76 @@ bool LibTreeHashPrivate::ensureFileOpen(QFileDevice& file, bool write, QString* 
     return true;
 }
 
+void LibTreeHash::cleanHashFile(const QStringList& keep){
+    if(!this->priv->hashFileSrc){
+        this->priv->eventListener.callOnError("no hashfile was loaded", "cleanHashFile");
+        return;
+    }
+    if(this->priv->rootDir.isNull()){
+        this->priv->eventListener.callOnError("no root-dir was set", "cleanHashFile");
+        return;
+    }
+
+    QDir rootDir(this->priv->rootDir);
+    if(!rootDir.exists()){
+        this->priv->eventListener.callOnError("root does not exist", "cleanHashFile");
+        return;
+    }
+
+    const auto hashes = this->priv->hashFileData.find("files");
+    if(hashes == this->priv->hashFileData.end()){
+        this->priv->eventListener.callOnError("hash-file is malformed", "cleanHashFile");
+        return;
+    }
+
+    // filter hashes
+    QSet<QString> keepSet(keep.begin(), keep.end());
+    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
+        QString f = QString::fromStdString(iter.key());
+        QString absPath = rootDir.absoluteFilePath(f);
+        if(keepSet.contains(f) || keepSet.contains(absPath)){
+            iter = hashes->erase(iter);
+        }
+    }
+
+    this->priv->saveHashFile();
+}
+
+QStringList LibTreeHash::checkForRemovedFiles(const QStringList& files){
+    if(!this->priv->hashFileSrc){
+        this->priv->eventListener.callOnError("no hashfile was loaded", "cleanHashFile");
+        return QStringList();
+    }
+    if(this->priv->rootDir.isNull()){
+        this->priv->eventListener.callOnError("no root-dir was set", "cleanHashFile");
+        return QStringList();
+    }
+
+    QDir rootDir(this->priv->rootDir);
+    if(!rootDir.exists()){
+        this->priv->eventListener.callOnError("root does not exist", "cleanHashFile");
+        return QStringList();
+    }
+
+    const auto hashes = this->priv->hashFileData.find("files");
+    if(hashes == this->priv->hashFileData.end()){
+        this->priv->eventListener.callOnError("hash-file is malformed", "cleanHashFile");
+        return QStringList();
+    }
+
+    // find all removed files
+    QStringList removed;
+    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
+        QString file = QString::fromStdString(iter.key());
+        QString absPath = rootDir.absoluteFilePath(file);
+        if(!files.contains(absPath)){
+            removed.append(file);
+        }
+    }
+
+    return removed;
+}
+
 QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)
 {
     if(!QFileInfo(root).isDir()){
@@ -499,121 +569,4 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
     }
 
     return ret;
-}
-
-void TreeHash::cleanHashFile(const QString hashfilePath, const QString rootPath, QStringList keep, QString* error){
-    QFile src(hashfilePath);
-    QFile dst(hashfilePath);
-    cleanHashFile(src, dst, rootPath, keep, error);
-}
-
-void TreeHash::cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst, const QString rootPath,
-                             QStringList keep, QString* error, bool truncDst){
-    if(!LibTreeHashPrivate::ensureFileOpen(hashfileSrc, false, error))
-        return;
-    if(!LibTreeHashPrivate::ensureFileOpen(hashfileDst, true, error))
-        return;
-
-    QDir rootDir(rootPath);
-    if(!rootDir.exists()){
-        if(error != nullptr)
-            *error = QStringLiteral("root does not exist");
-        return;
-    }
-
-    QString loadError;
-    json hashFile = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
-    if(!loadError.isNull()){
-        if(error != nullptr)
-            *error = std::move(loadError);
-        return;
-    }
-
-    const auto hashes = hashFile.find("files");
-    if(hashes == hashFile.end()){
-        if(error != nullptr)
-            *error = QStringLiteral("hash-file is malformed");
-        return;
-    }
-
-    // filter hashes
-    QSet<QString> keepSet(keep.begin(), keep.end());
-    json filteredHashes;
-    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
-        QString f = QString::fromStdString(iter.key());
-        QString absPath = rootDir.absoluteFilePath(f);
-        if(keepSet.contains(f) || keepSet.contains(absPath)){
-            filteredHashes[iter.key()] = iter.value();
-        }
-    }
-
-    // save hashes
-    hashFile["files"] = std::move(filteredHashes);
-    std::string jsonData = hashFile.dump(2);
-
-    if(truncDst){
-        if(!hashfileDst.resize(0)){
-            if(error != nullptr)
-                *error = QStringLiteral("unable to save hashes: ") + hashfileDst.errorString();
-            return;
-        }
-    }
-
-    if(hashfileDst.write(jsonData.c_str()) == -1){
-        if(error != nullptr)
-            *error = QStringLiteral("unable to save hashes: ") + hashfileDst.errorString();
-        return;
-    }
-
-    hashfileDst.flush();
-    fsync(hashfileDst.handle());// without this the tests read only an empty file
-
-    if(error != nullptr)
-        *error = QString();
-}
-
-QStringList TreeHash::checkForRemovedFiles(const QString hashfilePath, const QString rootPath, const QStringList files, QString* error){
-    QFile src(hashfilePath);
-    return checkForRemovedFiles(src, rootPath, files, error);
-}
-
-QStringList TreeHash::checkForRemovedFiles(QFileDevice& hashfileSrc, const QString rootPath, const QStringList files, QString* error){
-    QDir rootDir(rootPath);
-    if(!rootDir.exists()){
-        if(error != nullptr)
-            *error = QStringLiteral("root does not exist");
-        return QStringList();
-    }
-
-    if(!LibTreeHashPrivate::ensureFileOpen(hashfileSrc, false, error))
-        return QStringList();
-
-    QString loadError;
-    json hashFile = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
-    if(!loadError.isNull()){
-        if(error != nullptr)
-            *error = loadError;
-        return QStringList();
-    }
-
-    const auto hashes = hashFile.find("files");
-    if(hashes == hashFile.end()){
-        if(error != nullptr)
-            *error = QStringLiteral("hash-file is malformed");
-        return QStringList();
-    }
-
-    // find all removed files
-    QStringList removed;
-    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
-        QString file = QString::fromStdString(iter.key());
-        QString absPath = rootDir.absoluteFilePath(file);
-        if(!files.contains(absPath)){
-            removed.append(file);
-        }
-    }
-
-    if(error != nullptr)
-        *error = QString();
-    return removed;
 }
