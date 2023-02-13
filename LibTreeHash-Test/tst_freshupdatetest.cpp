@@ -23,7 +23,7 @@ public:
 
 private slots:
     void initTestCase(){
-        files.setup(true, false);
+        files.setup(true, false, false);
     }
 
     void cleanupTestCase(){

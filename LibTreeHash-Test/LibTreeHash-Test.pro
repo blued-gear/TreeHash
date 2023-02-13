@@ -9,6 +9,7 @@ TEMPLATE = app
 SOURCES +=  \
     main.cpp \
     tst_freshupdatetest.cpp \
+    tst_hmacupdatetest.cpp \
     tst_partialupdatetest.cpp \
     tst_verifytest.cpp
 

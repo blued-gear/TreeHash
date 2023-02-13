@@ -1,7 +1,8 @@
 #include <QtTest>
 
+#include <QTemporaryDir>
+#include <QFile>
 #include <QJsonDocument>
-#include <QRegularExpression>
 
 #include "testfiles.h"
 #include "libtreehash.h"
@@ -9,7 +10,7 @@
 using namespace TreeHash;
 
 /// test creation of a new hash-file from tree
-class PartialUpdateTest : public QObject
+class HmacUpdateTest : public QObject
 {
     Q_OBJECT
 
@@ -17,27 +18,23 @@ private:
     TestFiles files;
 
 public:
-    PartialUpdateTest(){}
-    ~PartialUpdateTest(){}
+    HmacUpdateTest(){}
+    ~HmacUpdateTest(){}
 
 private slots:
     void initTestCase(){
-        files.setup(false, true, false);
+        files.setup(false, false, true);
     }
 
     void cleanupTestCase(){
         files.cleanup();
     }
 
-    void createPartialHashes(){
-        updateHashes();
-        verifyHashes();
-    }
-
-private:
-    void updateHashes(){
-        QDir dataDir = files.getD1FalseData();
-        const QString hashFile = files.getD1FalseHashFilePath();
+    void createHmacHashes(){
+        const QString hashFileName("hmacHases.json");
+        const QString hmacKey("a_Key");
+        QDir dataDir = files.getD2Data();
+        QDir hashFilesDir = files.getD2Hashes();
 
         EventListener listener;
         listener.onError = [](QString msg, QString path) -> void{
@@ -53,36 +50,31 @@ private:
         LibTreeHash treeHash(listener);
 
         QStringList paths = listAllFilesInDir(dataDir.path(), false, false);
-        paths = paths.filter(QRegularExpression(".+\\/d1\\/f1\\.dat|.*\\/d1\\/f2\\.dat"));// just use f1 and f2
 
         try{
             treeHash.setMode(RunMode::UPDATE);
             treeHash.setRootDir(dataDir.path());
-            treeHash.setHashesFile(hashFile);
+            treeHash.setHashesFile(hashFilesDir.filePath(hashFileName));
             treeHash.setFiles(paths);
+            treeHash.setHmacKey(hmacKey);
 
             treeHash.run();
         }catch(...){
             QVERIFY2(false, "treeHash threw exception");
         }
-    }
-
-    void verifyHashes(){
-        QDir dataDir = files.getD1FalseData();
-        const QString hashFile = files.getD1FalseHashFilePath();
-        const QString expectedHashFile = files.getD1FalseExpectedHashPath();
 
         // verify created file
-        QFile expectedJsonFile(expectedHashFile);
+        QFile expectedJsonFile = files.getD2Expected();
         expectedJsonFile.open(QFile::OpenModeFlag::ReadOnly);
         QJsonObject expectedJson = QJsonDocument::fromJson(expectedJsonFile.readAll()).object();
 
-        QFile actualJsonFile(hashFile);
+        QFile actualJsonFile(hashFilesDir.filePath(hashFileName));
         actualJsonFile.open(QFile::OpenModeFlag::ReadOnly);
         QJsonObject actualJson = QJsonDocument::fromJson(actualJsonFile.readAll()).object();
 
         QVERIFY2(expectedJson == actualJson, "created hash-file did not contain the expected content");
     }
+
 };
 
-#include "tst_partialupdatetest.moc"
+#include "tst_hmacupdatetest.moc"

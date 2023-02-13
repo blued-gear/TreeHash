@@ -19,8 +19,11 @@ class TestFiles{
     QDir d1False, d1False_data, d1False_hashes;
     QString d1False_hashfile, d1False_hashfile2;
 
+    QDir d2, d2_data, d2_hashes;
+    QString d2_expected;
+
 public:
-    void setup(bool d1, bool d1False){
+    void setup(bool d1, bool d1False, bool d2){
         Q_ASSERT(dirPath.isValid());
         dir.setPath(dirPath.path());
         printf("testDir: %s\n", dir.path().toStdString().c_str());
@@ -35,6 +38,12 @@ public:
 
         if(d1False)
             extractD1False();
+
+        if(d2){
+            extractD2();
+
+            d2_expected = ":testfiles/d2-expected.json";
+        }
     }
 
     void cleanup(){
@@ -50,6 +59,10 @@ public:
         d1False_hashes.setPath(emptyPath);
         d1False_hashfile = emptyPath;
         d1False_hashfile2 = emptyPath;
+        d2.setPath(emptyPath);
+        d2_data.setPath(emptyPath);
+        d2_hashes.setPath(emptyPath);
+        d2_expected = emptyPath;
     }
 
     QDir getD1Data(){
@@ -73,6 +86,16 @@ public:
     }
     QString getD1FalseExpectedHashPath(){
         return d1False_hashfile2;
+    }
+
+    QDir getD2Data(){
+        return d2_data;
+    }
+    QDir getD2Hashes(){
+        return d2_hashes;
+    }
+    QFile getD2Expected(){
+        return QFile(d2_expected);
     }
 
 private:
@@ -101,6 +124,18 @@ private:
 
         d1False_hashfile = d1False_hashes.path() + "/hashes.json";
         d1False_hashfile2 = d1False_hashes.path() + "/expected.json";
+    }
+
+    void extractD2(){
+        // create dirs
+        d2.setPath(dir.path() + "/d2");
+        Q_ASSERT(dir.mkdir("d2"));
+        d2_data = QDir(d2.path() + "/tree");
+        Q_ASSERT(d2.mkdir("tree"));
+        d2_hashes = QDir(d2.path() + "/hashes");
+        Q_ASSERT(d2.mkdir("hashes"));
+
+        extractZip(":/testfiles/d2.zip", d2_data);
     }
 
     void extractZip(QString src, QDir dest){
