@@ -3,6 +3,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QCryptographicHash>
 
 namespace TreeHash{
 
@@ -122,6 +123,18 @@ public:
     QString getRootDir() const{
         return this->rootDir;
     }
+
+    /**
+     * @brief sets the hash-algorithm used for computing the file-hashes (default is QCryptographicHash::Algorithm::Keccak_512)
+     *      ATTENTION: do not change the algorithm while a process is running
+     * @param alg the algorithm to use
+     */
+    void setHashAlgorithm(QCryptographicHash::Algorithm alg);
+
+    /**
+     * @brief returns the current hash-algorithm
+     */
+    QCryptographicHash::Algorithm getHashAlgorithm() const;
 
     /**
      * @brief sets the path of the file containing the hashes

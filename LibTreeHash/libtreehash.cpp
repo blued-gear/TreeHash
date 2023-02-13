@@ -7,11 +7,8 @@
 #include <QSet>
 #include <QJsonObject>
 #include <QJsonDocument>
-#include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
 #include <unistd.h>
-
-constexpr QCryptographicHash::Algorithm HASH_ALGORITHM = QCryptographicHash::Algorithm::Keccak_512;
 
 using namespace TreeHash;
 
@@ -23,6 +20,7 @@ public:
     QFile hashFile;
     QStringList files;
     QString hmacKey;
+    QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Algorithm::Keccak_512;
 
     QJsonObject hashes;
 
@@ -58,6 +56,14 @@ LibTreeHash& LibTreeHash::operator=(LibTreeHash&& mve){
     mve.priv = nullptr;
     this->runMode = mve.runMode;
     return *this;
+}
+
+void LibTreeHash::setHashAlgorithm(QCryptographicHash::Algorithm alg){
+    this->priv->hashAlgorithm = alg;
+}
+
+QCryptographicHash::Algorithm LibTreeHash::getHashAlgorithm() const{
+    return this->priv->hashAlgorithm;
 }
 
 void LibTreeHash::setHashesFile(const QString path)
@@ -229,7 +235,7 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
 
     if(this->hmacKey.isEmpty()){
         // normal hash
-        QCryptographicHash hash(HASH_ALGORITHM);
+        QCryptographicHash hash(this->hashAlgorithm);
         if(!hash.addData(&file)){
             this->eventListener.callOnError(QStringLiteral("unable to read file"), path);
             return QString();
@@ -238,7 +244,7 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
         return QString(hash.result().toHex());
     }else{
         // use HMAC
-        QMessageAuthenticationCode hash(HASH_ALGORITHM);
+        QMessageAuthenticationCode hash(this->hashAlgorithm);
         hash.setKey(this->hmacKey.toUtf8());
         if(!hash.addData(&file)){
             this->eventListener.callOnError(QStringLiteral("unable to read file"), path);
