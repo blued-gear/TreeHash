@@ -511,11 +511,13 @@ void LibTreeHash::cleanHashFile(const QStringList& keep){
 
     // filter hashes
     QSet<QString> keepSet(keep.begin(), keep.end());
-    for(auto iter = hashes->begin(); iter != hashes->end(); iter++){
+    for(auto iter = hashes->begin(); iter != hashes->end();){
         QString f = QString::fromStdString(iter.key());
         QString absPath = rootDir.absoluteFilePath(f);
-        if(keepSet.contains(f) || keepSet.contains(absPath)){
+        if(!keepSet.contains(f) && !keepSet.contains(absPath)){
             iter = hashes->erase(iter);
+        }else{
+            iter++;
         }
     }
 
