@@ -18,29 +18,32 @@ public:
     virtual ~EventListener() = default;
 
     /**
-     * @brief called when a file was processed
+     * @brief called when a file was processed;
+     *      ATTENTION: this method should not throw an exception
      * @param path the path of the processed file
      * @param success UPDATE: if no error occurred; VERIFY: if the hash matched, if any existed
      */
-    virtual void onFileProcessed(QString path, bool success) noexcept{
+    virtual void onFileProcessed(QString path, bool success){
         Q_UNUSED(path)
         Q_UNUSED(success)
     }
     /**
      * @brief called when an anomaly occurred
+     *      ATTENTION: this method should not throw an exception
      * @param msg a message
      * @param path location of anomaly (mostly a file path)
      */
-    virtual void onWarning(QString msg, QString path) noexcept{
+    virtual void onWarning(QString msg, QString path){
         Q_UNUSED(msg)
         Q_UNUSED(path);
     }
     /**
      * @brief called when an error occurred
+     *      ATTENTION: this method should not throw an exception
      * @param msg a message
      * @param path location of error (mostly a file path)
      */
-    virtual void onError(QString msg, QString path) noexcept{
+    virtual void onError(QString msg, QString path){
         Q_UNUSED(msg)
         Q_UNUSED(path)
     }
