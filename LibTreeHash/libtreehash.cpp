@@ -223,7 +223,7 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
     return QString(hash.result().toHex());
 }
 
-QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)
+QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)
 {
     if(!QFileInfo(root).isDir()){
         throw std::invalid_argument(QStringLiteral("given path is not a directory").toStdString());
