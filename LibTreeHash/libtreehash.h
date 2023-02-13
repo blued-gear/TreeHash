@@ -109,12 +109,15 @@ public:
      */
     const QStringList getFiles();
 };
-}
 
 /**
  * @brief lists all files recursively in the given root directory
  * @param root the root directory to start the search
+ * @param includeLinkedDirs if true dir-symlinks will be followed
+ * @param includeLinkedFiles if true file-symlinks will be included
  * @return a list with the paths of all files in root
  */
-QStringList listAllFilesInDir(const QString root);
+QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles);
+}
+
 #endif // LIBTREEHASH_H
