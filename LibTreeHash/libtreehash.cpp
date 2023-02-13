@@ -93,8 +93,10 @@ void LibTreeHash::setHashesFilePath(const QString path){
 
 void LibTreeHash::setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dst)
 {
-    if(this->priv->hashFileSrc->isOpen()){
+    if(this->priv->hashFileSrc != nullptr && this->priv->hashFileSrc->isOpen()){
         this->priv->hashFileSrc->close();
+    }
+    if(this->priv->hashFileDst != nullptr && this->priv->hashFileDst->isOpen()){
         this->priv->hashFileDst->close();
     }
 
