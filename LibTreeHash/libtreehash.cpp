@@ -229,7 +229,7 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
         throw std::invalid_argument(QStringLiteral("given path is not a directory").toStdString());
     }
 
-    QFlags<QDirIterator::IteratorFlag> iterFlags = QDirIterator::IteratorFlag::Subdirectories;
+    QDirIterator::IteratorFlags iterFlags = QDirIterator::IteratorFlag::Subdirectories;
     if(includeLinkedDirs)
         iterFlags |= QDirIterator::IteratorFlag::FollowSymlinks;
     QDirIterator iter(root, iterFlags);
