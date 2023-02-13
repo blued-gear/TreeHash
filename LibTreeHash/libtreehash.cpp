@@ -1,5 +1,5 @@
 #include "libtreehash.h"
-#include <QFile>
+#include <QFileDevice>
 #include <QFileInfo>
 #include <QDir>
 #include <QDirIterator>
@@ -17,7 +17,7 @@ class LibTreeHashPrivate{
 public:
 
     EventListener eventListener;
-    QFile hashFile;
+    std::unique_ptr<QFileDevice> hashFileSrc, hashFileDst;
     QStringList files;
     QString hmacKey;
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Algorithm::Keccak_512;
@@ -33,7 +33,7 @@ public:
     void processFiles(RunMode runMode, QString& rootDir);
     QString computeFileHash(QString path);
 
-    static QJsonObject loadHashes(QFile& hashFile, QString* error);
+    static QJsonObject loadHashes(QFileDevice& hashFile, QString* error);
 };
 }
 
@@ -66,25 +66,39 @@ QCryptographicHash::Algorithm LibTreeHash::getHashAlgorithm() const{
     return this->priv->hashAlgorithm;
 }
 
-void LibTreeHash::setHashesFile(const QString path)
-{
-    // check if path is a readable file
+void LibTreeHash::setHashesFilePath(const QString path){
     if(!QFileInfo::exists(path)){
-        // try creating a new file
-        QFile newFile(path);
-        if(!newFile.open(QFile::OpenModeFlag::NewOnly | QFile::OpenModeFlag::WriteOnly))
-            throw std::invalid_argument(QStringLiteral("file for HashesFile does not exist an can not be created (%1)").arg(path).toStdString());
+        QFile file(path);
+        // it may not exist -> try creating a new file
+        if(!file.open(QFile::OpenModeFlag::NewOnly | QFile::OpenModeFlag::WriteOnly))
+            throw std::invalid_argument(QStringLiteral("file for HashesFile does not exist and can not be created (%1)")
+                                            .arg(file.errorString()).toStdString()
+            );
     }
 
-    QFile& file = this->priv->hashFile;
-    if(file.isOpen())
-        file.close();
-    file.setFileName(path);
+    auto srcFile = std::unique_ptr<QFileDevice>(new QFile(path));
+    auto dstFile = std::unique_ptr<QFileDevice>(new QFile(path));
+    setHashesFile(std::move(srcFile), std::move(dstFile));
 }
 
-const QString LibTreeHash::getHashesFile() const
+void LibTreeHash::setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dst)
 {
-    return this->priv->hashFile.fileName();
+    if(this->priv->hashFileSrc->isOpen()){
+        this->priv->hashFileSrc->close();
+        this->priv->hashFileDst->close();
+    }
+
+    this->priv->hashFileSrc = std::move(src);
+    this->priv->hashFileDst = std::move(dst);
+}
+
+const QFileDevice& LibTreeHash::getHashesFileSrc() const
+{
+    return *this->priv->hashFileSrc;
+}
+
+const QFileDevice& LibTreeHash::getHashesFileDst() const{
+    return *this->priv->hashFileDst;
 }
 
 void LibTreeHash::setFiles(const QStringList paths)
@@ -106,6 +120,17 @@ QString LibTreeHash::getHmacKey() const{
 }
 
 void LibTreeHash::run(){
+    QString openError;
+    if(!LibTreeHash::ensureFileOpen(*this->priv->hashFileSrc, false, &openError)){
+        throw std::invalid_argument(QStringLiteral("unable to open HashesFile source: %1").arg(openError).toStdString());
+    }
+
+    if(this->runMode == RunMode::UPDATE || this->runMode == RunMode::UPDATE_NEW){
+        if(!LibTreeHash::ensureFileOpen(*this->priv->hashFileDst, true, &openError)){
+            throw std::invalid_argument(QStringLiteral("unable to open HashesFile destination: %1").arg(openError).toStdString());
+        }
+    }
+
     this->priv->openHashFile(this->rootDir);
 
     this->priv->processFiles(this->runMode, this->rootDir);
@@ -115,12 +140,46 @@ void LibTreeHash::run(){
     }
 }
 
+bool LibTreeHash::ensureFileOpen(QFileDevice& file, bool write, QString* error){
+    if(write){
+        if(!file.isOpen()){
+            if(!file.open(QFileDevice::OpenModeFlag::ExistingOnly | QFileDevice::OpenModeFlag::ReadWrite)){
+                if(error != nullptr)
+                    *error = QStringLiteral("file can not be opened (%1)").arg(file.errorString());
+                return false;
+            }
+        }else{
+            if(!file.isWritable()){
+                if(error != nullptr)
+                    *error = QStringLiteral("file is not writeable");
+                return false;
+            }
+        }
+    }else{
+        if(!file.isOpen()){
+            if(!file.open(QFileDevice::OpenModeFlag::ExistingOnly | QFileDevice::OpenModeFlag::ReadOnly)){
+                if(error != nullptr)
+                    *error = QStringLiteral("file can not be opened (%1)").arg(file.errorString());
+                return false;
+            }
+        }else{
+            if(!file.isReadable()){
+                if(error != nullptr)
+                    *error = QStringLiteral("file is not readable");
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 bool LibTreeHashPrivate::storeHashes(){
     QJsonDocument json(this->hashes);
     QByteArray jsonData = json.toJson(QJsonDocument::JsonFormat::Indented);
 
     // rewrite file
-    QFile& file = this->hashFile;
+    QFileDevice& file = *this->hashFileDst;
     if(!file.resize(0)){
         this->eventListener.callOnError(QStringLiteral("unable to save hashes: ") + file.errorString(),
                                         QStringLiteral("saving hashes"));
@@ -133,7 +192,7 @@ bool LibTreeHashPrivate::storeHashes(){
     }
 
     file.flush();
-    fsync(file.handle());// without this the tests read only an empty file
+    fsync(file.handle());// without this the tests would read only an empty file
 
     return true;
 }
@@ -181,7 +240,7 @@ void LibTreeHashPrivate::openHashFile(QString& rootDir){
     }
 
     QString loadError;
-    this->hashes = LibTreeHashPrivate::loadHashes(this->hashFile, &loadError);
+    this->hashes = LibTreeHashPrivate::loadHashes(*this->hashFileSrc, &loadError);
     if(!loadError.isNull()){
         this->eventListener.callOnError(loadError, QStringLiteral("loading hashes"));
         return;
@@ -254,22 +313,22 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
     }
 }
 
-QJsonObject LibTreeHashPrivate::loadHashes(QFile& hashFile, QString* error){
-    if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
-        if(error != nullptr){
-            QString fileErr = hashFile.errorString();
-            *error = QStringLiteral("unable to load hashes: can not open file (%1)").arg(fileErr);
-        }
+QJsonObject LibTreeHashPrivate::loadHashes(QFileDevice& hashFile, QString* error){
+    if(!hashFile.isOpen()){
+        if(!hashFile.open(QFile::OpenModeFlag::ReadWrite)){
+            if(error != nullptr){
+                QString fileErr = hashFile.errorString();
+                *error = QStringLiteral("unable to load hashes: can not open file (%1)").arg(fileErr);
+            }
 
-        return QJsonObject();
-    }
-    if(!hashFile.seek(0)){
-        if(error != nullptr){
-            QString fileErr = hashFile.errorString();
-            *error =  QStringLiteral("unable to load hashes: can not seek in file (%1)").arg(fileErr);
+            return QJsonObject();
         }
+    }else{
+        if(!hashFile.isReadable()){
+            *error = QStringLiteral("source for HashesFile is not readable");
 
-        return QJsonObject();
+            return QJsonObject();
+        }
     }
 
     if(hashFile.size() == 0){

@@ -4,6 +4,9 @@
 #include <QString>
 #include <QStringList>
 #include <QCryptographicHash>
+#include <memory>
+
+class QFileDevice;
 
 namespace TreeHash{
 
@@ -136,17 +139,21 @@ public:
      */
     QCryptographicHash::Algorithm getHashAlgorithm() const;
 
+    void setHashesFilePath(const QString path);
+
     /**
      * @brief sets the path of the file containing the hashes
      *      ATTENTION: do not change the path while a process is running
      * @param path the path to the hash-file
      */
-    void setHashesFile(const QString path);
+    void setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dest);
 
     /**
      * @brief returns the path of the currently used hash-file
      */
-    const QString getHashesFile() const;
+    const QFileDevice& getHashesFileSrc() const;
+
+    const QFileDevice& getHashesFileDst() const;
 
     /**
      * @brief sets all files to process
@@ -159,6 +166,9 @@ public:
      * @brief returns the paths of all files which will be (or are) processed
      */
     const QStringList getFiles() const;
+
+private:
+    static bool ensureFileOpen(QFileDevice& file, bool write, QString* error);
 };
 
 /**
