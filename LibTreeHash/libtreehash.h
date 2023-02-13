@@ -28,6 +28,8 @@ class EventListener{
 
 public:
 
+    static const EventListener VOID_EVENT_LISTENER;
+
     /**
      * @brief called when a file was processed;
      *      ATTENTION: this method should not throw an exception
@@ -87,7 +89,7 @@ public:
      * @param listener the eventlistener to report events to
      * @param autosave if true saveHashFile() will be called after every modifying action (run(), cleanHashFile())
      */
-    LibTreeHash(const EventListener& listener, bool autosave = true);
+    LibTreeHash(const EventListener& listener = EventListener::VOID_EVENT_LISTENER, bool autosave = true);
     LibTreeHash(LibTreeHash&& mve);
     ~LibTreeHash();
 

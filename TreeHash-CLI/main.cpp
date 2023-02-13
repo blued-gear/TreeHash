@@ -81,6 +81,192 @@ QStringList listFiles(QCommandLineParser& args){
     return files;
 }
 
+bool initLibTreeHash(QCommandLineParser& args, TreeHash::LibTreeHash& treeHash, int& exitCode, bool needsMode){
+    if(args.values("r").size() > 1){
+        std::cerr << "root must be set no more than once\n";
+        exitCode = -1;
+        return false;
+    }
+    if(args.values("f").size() != 1){
+        std::cerr << "hashfile must be set exactly once\n";
+        exitCode = -1;
+        return false;
+    }
+    if(args.values("m").size() != 1 && needsMode){
+        std::cerr << "mode must be set exactly once\n";
+        exitCode = -1;
+        return false;
+    }
+    if(args.values("l").size() > 1){
+        std::cerr << "loglevel must not be set more than once\n";
+        exitCode = -1;
+        return false;
+    }
+    if(args.values("k").size() > 1){
+        std::cerr << "hamc-key must not be set more than once\n";
+        exitCode = -1;
+        return false;
+    }
+
+    const QString loglevelStr = args.value("l");
+    int loglevel;
+    if(loglevelStr == "q"){
+        loglevel = 0;
+    }else if(loglevelStr == "e"){
+        loglevel = 1;
+    }else if(loglevelStr == "w"){
+        loglevel = 2;
+    }else if(loglevelStr == "a"){
+        loglevel = 3;
+    }else if(loglevelStr.isEmpty()){
+        // use default value
+        loglevel = 2;
+    }else{
+        std::cerr << "loglevel has an invalid value\n\n";
+        args.showHelp(-1);
+        exitCode = -1;
+        return false;
+    }
+
+    bool hashfileFromStdin = args.value("f") == "-";
+
+    TreeHash::EventListener eventListener;
+    eventListener.onFileProcessed = [loglevel, &exitCode, hashfileFromStdin](QString path, bool success) -> void{
+        if(!success){
+            if(loglevel >= 1){
+                if(hashfileFromStdin)
+                    std::cerr << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
+                else
+                    std::cout << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
+            }
+
+            if(exitCode < 1)
+                exitCode = 1;
+        }else{
+            if(loglevel >= 3){
+                if(hashfileFromStdin)
+                    std::cerr << QStringLiteral("file successful: %1\n").arg(path).toStdString();
+                else
+                    std::cout << QStringLiteral("file successful: %1\n").arg(path).toStdString();
+            }
+        }
+    };
+    eventListener.onWarning = [loglevel, hashfileFromStdin](QString msg, QString path) -> void{
+        if(loglevel >= 2){
+            if(hashfileFromStdin)
+                std::cerr << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
+            else
+                std::cout << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
+        }
+    };
+    eventListener.onError = [loglevel, &exitCode, hashfileFromStdin](QString msg, QString path) -> void{
+        if(loglevel >= 1){
+            if(hashfileFromStdin)
+                std::cerr << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
+            else
+                std::cout << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
+        }
+
+        if(exitCode < 2)
+            exitCode = 2;
+    };
+
+    treeHash = TreeHash::LibTreeHash(eventListener);
+
+    if(needsMode){
+        const QString modeStr = args.value("m");
+        TreeHash::RunMode mode;
+        if(modeStr == "update"){
+            mode = TreeHash::RunMode::UPDATE;
+        }else if(modeStr == "update_new"){
+            mode = TreeHash::RunMode::UPDATE_NEW;
+        }else if(modeStr == "update_mod"){
+            mode = TreeHash::RunMode::UPDATE_MODIFIED;
+        }else if(modeStr == "verify"){
+            mode = TreeHash::RunMode::VERIFY;
+        }else{
+            std::cerr << "mode has an invalid value\n\n";
+            args.showHelp(-1);
+            exitCode = -1;
+            return false;
+        }
+
+        treeHash.setMode(mode);
+    }
+
+    if(args.isSet("hash-alg")){
+        const QString hashAlgStr = args.value("hash-alg");
+        bool valid;
+        auto algoVal = QMetaEnum::fromType<QCryptographicHash::Algorithm>().keyToValue(hashAlgStr.toStdString().c_str(), &valid);
+        if(valid){
+            QCryptographicHash::Algorithm hashAlg = static_cast<QCryptographicHash::Algorithm>(algoVal);
+            treeHash.setHashAlgorithm(hashAlg);
+        }else{
+            std::cerr << "invalid hash-algorithm\n";
+            exitCode = -1;
+            return false;
+        }
+    }
+
+    if(!hashfileFromStdin){
+        QFileInfo hashfileInfo(args.value("f"));
+        if(hashfileInfo.exists()){
+            if(!hashfileInfo.isFile()){
+                std::cerr << "hash-file is not a file\n";
+                exitCode = -1;
+                return false;
+            }
+        }else{
+            if(treeHash.getRunMode() == TreeHash::RunMode::VERIFY){
+                std::cerr << "hash-file does not exist\n";
+                exitCode = -1;
+                return false;
+            }
+        }
+    }
+
+    treeHash.setFiles(listFiles(args));
+    treeHash.setHmacKey(args.value("k"));
+
+    if(hashfileFromStdin){
+        auto in = std::make_unique<QFile>();
+        auto out = std::make_unique<QFile>();
+
+        if(!in->open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
+            std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in->errorString()).toStdString();
+            exitCode = -2;
+            return false;
+        }
+        if(!out->open(stdout, QFile::OpenModeFlag::WriteOnly, QFile::FileHandleFlag::DontCloseHandle)){
+            std::cerr << QStringLiteral("unable to open stdout (%1)\n").arg(out->errorString()).toStdString();
+            exitCode = -2;
+            return false;
+        }
+
+        treeHash.setHashesFile(std::move(in), std::move(out), false);
+    }else{
+        treeHash.setHashesFilePath(args.value("f"));
+    }
+
+    if(args.isSet("r")){
+        if(!QFileInfo(args.value("r")).isDir()){
+            std::cerr << "root does not exist or is not a directory\n";
+            exitCode = -1;
+            return false;
+        }
+        treeHash.setRootDir(args.value("r"));
+    }else{
+        if(treeHash.getRootDir().isNull()){
+            std::cerr << "root was not provided and was not stored in hashfile\n";
+            exitCode = -1;
+            return false;
+        }
+    }
+
+    exitCode = 0;
+    return true;
+}
+
 void setupCommands(QCommandLineParser& parser){
     parser.setSingleDashWordOptionMode(QCommandLineParser::SingleDashWordOptionMode::ParseAsCompactedShortOptions);
     parser.setOptionsAfterPositionalArgumentsMode(QCommandLineParser::OptionsAfterPositionalArgumentsMode::ParseAsOptions);
@@ -126,179 +312,15 @@ void setupCommands(QCommandLineParser& parser){
 }
 
 int execNormal(QCommandLineParser& args){
-    if(args.values("r").size() > 1){
-        std::cerr << "root must be set no more than once\n";
-        return -1;
-    }
-    if(args.values("f").size() != 1){
-        std::cerr << "hashfile must be set exactly once\n";
-        return -1;
-    }
-    if(args.values("m").size() != 1){
-        std::cerr << "mode must be set exactly once\n";
-        return -1;
-    }
-    if(args.values("l").size() > 1){
-        std::cerr << "loglevel must not be set more than once\n";
-        return -1;
-    }
-    if(args.values("k").size() > 1){
-        std::cerr << "hamc-key must not be set more than once\n";
-        return -1;
-    }
-
-    const QString loglevelStr = args.value("l");
-    int loglevel;
-    if(loglevelStr == "q"){
-        loglevel = 0;
-    }else if(loglevelStr == "e"){
-        loglevel = 1;
-    }else if(loglevelStr == "w"){
-        loglevel = 2;
-    }else if(loglevelStr == "a"){
-        loglevel = 3;
-    }else if(loglevelStr.isEmpty()){
-        // use default value
-        loglevel = 2;
-    }else{
-        std::cerr << "loglevel has an invalid value\n\n";
-        args.showHelp(-1);
-        return -1;
-    }
-
-    bool hashfileFromStdin = args.value("f") == "-";
-    int exitcode = 0;
-
-    TreeHash::EventListener eventListener;
-    eventListener.onFileProcessed = [loglevel, &exitcode, hashfileFromStdin](QString path, bool success) -> void{
-        if(!success){
-            if(loglevel >= 1){
-                if(hashfileFromStdin)
-                    std::cerr << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
-                else
-                    std::cout << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
-            }
-
-            if(exitcode < 1)
-                exitcode = 1;
-        }else{
-            if(loglevel >= 3){
-                if(hashfileFromStdin)
-                    std::cerr << QStringLiteral("file successful: %1\n").arg(path).toStdString();
-                else
-                    std::cout << QStringLiteral("file successful: %1\n").arg(path).toStdString();
-            }
-        }
-    };
-    eventListener.onWarning = [loglevel, hashfileFromStdin](QString msg, QString path) -> void{
-        if(loglevel >= 2){
-            if(hashfileFromStdin)
-                std::cerr << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
-            else
-                std::cout << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
-        }
-    };
-    eventListener.onError = [loglevel, &exitcode, hashfileFromStdin](QString msg, QString path) -> void{
-        if(loglevel >= 1){
-            if(hashfileFromStdin)
-                std::cerr << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
-            else
-                std::cout << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
-        }
-
-        if(exitcode < 2)
-            exitcode = 2;
-    };
-
     try{
-        TreeHash::LibTreeHash treeHash(eventListener);
+        TreeHash::LibTreeHash treeHash;
+        int exitCode = 0;
 
-        {
-            const QString modeStr = args.value("m");
-            TreeHash::RunMode mode;
-            if(modeStr == "update"){
-                mode = TreeHash::RunMode::UPDATE;
-            }else if(modeStr == "update_new"){
-                mode = TreeHash::RunMode::UPDATE_NEW;
-            }else if(modeStr == "update_mod"){
-                mode = TreeHash::RunMode::UPDATE_MODIFIED;
-            }else if(modeStr == "verify"){
-                mode = TreeHash::RunMode::VERIFY;
-            }else{
-                std::cerr << "mode has an invalid value\n\n";
-                args.showHelp(-1);
-                return -1;
-            }
-
-            treeHash.setMode(mode);
+        if(initLibTreeHash(args, treeHash, exitCode, true)){
+            treeHash.run();
         }
 
-        if(args.isSet("hash-alg")){
-            const QString hashAlgStr = args.value("hash-alg");
-            bool valid;
-            auto algoVal = QMetaEnum::fromType<QCryptographicHash::Algorithm>().keyToValue(hashAlgStr.toStdString().c_str(), &valid);
-            if(valid){
-                QCryptographicHash::Algorithm hashAlg = static_cast<QCryptographicHash::Algorithm>(algoVal);
-                treeHash.setHashAlgorithm(hashAlg);
-            }else{
-                std::cerr << "invalid hash-algorithm\n";
-                return -1;
-            }
-        }
-
-        if(!hashfileFromStdin){
-            QFileInfo hashfileInfo(args.value("f"));
-            if(hashfileInfo.exists()){
-                if(!hashfileInfo.isFile()){
-                    std::cerr << "hash-file is not a file\n";
-                    return -1;
-                }
-            }else{
-                if(treeHash.getRunMode() == TreeHash::RunMode::VERIFY){
-                    std::cerr << "hash-file does not exist\n";
-                    return -1;
-                }
-            }
-        }
-
-        treeHash.setFiles(listFiles(args));
-        treeHash.setHmacKey(args.value("k"));
-
-        if(hashfileFromStdin){
-            auto in = std::make_unique<QFile>();
-            auto out = std::make_unique<QFile>();
-
-            if(!in->open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
-                std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in->errorString()).toStdString();
-                return -2;
-            }
-            if(!out->open(stdout, QFile::OpenModeFlag::WriteOnly, QFile::FileHandleFlag::DontCloseHandle)){
-                std::cerr << QStringLiteral("unable to open stdout (%1)\n").arg(out->errorString()).toStdString();
-                return -2;
-            }
-
-            treeHash.setHashesFile(std::move(in), std::move(out), false);
-        }else{
-            treeHash.setHashesFilePath(args.value("f"));
-        }
-
-
-        if(args.isSet("r")){
-            if(!QFileInfo(args.value("r")).isDir()){
-                std::cerr << "root does not exist or is not a directory\n";
-                return -1;
-            }
-            treeHash.setRootDir(args.value("r"));
-        }else{
-            if(treeHash.getRootDir().isNull()){
-                std::cerr << "root was not provided and was not stored in hashfile\n";
-                return -1;
-            }
-        }
-
-        treeHash.run();
-
-        return exitcode;
+        return exitCode;
     }catch(std::exception& e){
         std::cerr << "LibTreeHash threw an exception:\n" << e.what() << '\n';
         return -2;
@@ -306,148 +328,68 @@ int execNormal(QCommandLineParser& args){
 }
 
 int execClean(QCommandLineParser& args){
-    if(args.values("r").size() != 1){
-        std::cerr << "root must me set exactly once\n";
-        return -1;
-    }
-    if(args.values("f").size() != 1){
-        std::cerr << "hashfile must me set exactly once\n";
-        return -1;
-    }
-
-    QDir root(args.value("r"));
-    if(!root.exists()){
-        std::cerr << "root does not exist\n";
-        return -1;
-    }
-
-    bool hashfileFromStdin = args.value("f") == "-";
-
-    if(!hashfileFromStdin){
-        QFile hashfile(args.value("f"));
-        if(!hashfile.exists()){
-            std::cerr << "hash-file does not exist\n";
-            return -1;
-        }
-    }
-
-    QStringList keep = listFiles(args);
-
     try{
-        QString err;
+        TreeHash::LibTreeHash treeHash;
+        int exitCode = 0;
 
-        if(hashfileFromStdin){
-            QFile in;
-            QFile out;
-
-            if(!in.open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
-                std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in.errorString()).toStdString();
-                return -2;
-            }
-            if(!out.open(stdout, QFile::OpenModeFlag::WriteOnly, QFile::FileHandleFlag::DontCloseHandle)){
-                std::cerr << QStringLiteral("unable to open stdout (%1)\n").arg(out.errorString()).toStdString();
-                return -2;
-            }
-
-            TreeHash::cleanHashFile(in, out, root.path(), keep, &err, false);
-        }else{
-            TreeHash::cleanHashFile(args.value("f"), root.path(), keep, &err);
+        if(initLibTreeHash(args, treeHash, exitCode, false)){
+            QStringList keep = listFiles(args);
+            treeHash.cleanHashFile(keep);
         }
 
-        if(!err.isNull()){
-            std::cerr << "cleanHashFile returned with an error:\n" << err.toStdString() << '\n';
-            return -2;
-        }
-
-        return 0;
+        return exitCode;
     }catch(std::exception& e){
-        std::cerr << "cleanHashFile threw an exception:\n" << e.what() << '\n';
+        std::cerr << "LibTreeHash threw an exception:\n" << e.what() << '\n';
         return -2;
     }
 }
 
 int execRemoved(QCommandLineParser& args){
-    if(args.values("r").size() != 1){
-        std::cerr << "root must me set exactly once\n";
-        return -1;
-    }
-    if(args.values("f").size() != 1){
-        std::cerr << "hashfile must me set exactly once\n";
-        return -1;
-    }
-
-    QDir root(args.value("r"));
-    if(!root.exists()){
-        std::cerr << "root does not exist\n";
-        return -1;
-    }
-
-    bool hashfileFromStdin = args.value("f") == "-";
-
-    if(!hashfileFromStdin){
-        QFile hashfile(args.value("f"));
-        if(!hashfile.exists()){
-            std::cerr << "hash-file does not exist\n";
-            return -1;
-        }
-    }
-
-    QStringList existing = listFiles(args);
-
     try{
-        QString err;
-        QStringList missing;
+        TreeHash::LibTreeHash treeHash;
+        int exitCode = 0;
 
-        if(hashfileFromStdin){
-            QFile in;
+        if(initLibTreeHash(args, treeHash, exitCode, false)){
+            QStringList existing = listFiles(args);
+            QStringList missing = treeHash.checkForRemovedFiles(existing);
 
-            if(!in.open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
-                std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in.errorString()).toStdString();
-                return -2;
-            }
+            if(exitCode == 0){// errors would change exitCode in eventListener
+                // remove all excluded files from missing
+                QDir root(treeHash.getRootDir());
+                QFileInfo fi;
+                for(const QString& e : args.values("e")){
+                    QString path = root.absoluteFilePath(e);
+                    QString relPath = root.relativeFilePath(e);
+                    fi.setFile(path);
 
-            missing = TreeHash::checkForRemovedFiles(in, root.path(), existing, &err);
-        }else{
-            missing = TreeHash::checkForRemovedFiles(args.value("f"), root.path(), existing, &err);
-        }
-
-        if(!err.isNull()){
-            std::cerr << "cleanHashFile returned with an error:\n" << err.toStdString() << '\n';
-            return -2;
-        }
-
-        // remove all excluded files from missing
-        QFileInfo fi;
-        for(const QString& e : args.values("e")){
-            QString path = root.absoluteFilePath(e);
-            QString relPath = root.relativeFilePath(e);
-            fi.setFile(path);
-
-            if(fi.isDir()){
-                // remove subtree
-                missing.removeIf([relPath](const QString& entry) -> bool{
-                    return entry.startsWith(relPath);
-                });
-            }else if(fi.isFile()){
-                missing.removeOne(path);
-            }else if(!fi.exists()){
-                // missing paths also can be excluded -> QFileInfo can not determine type -> use heuristic: if paths ends with '/' it is treated as a dir
-                if(e.endsWith("/")){
-                    // remove subtree
-                    missing.removeIf([relPath](const QString& entry) -> bool{
-                        return entry.startsWith(relPath);
-                    });
-                }else{
-                    missing.removeOne(path);
+                    if(fi.isDir()){
+                        // remove subtree
+                        missing.removeIf([relPath](const QString& entry) -> bool{
+                            return entry.startsWith(relPath);
+                        });
+                    }else if(fi.isFile()){
+                        missing.removeOne(path);
+                    }else if(!fi.exists()){
+                        // missing paths also can be excluded -> QFileInfo can not determine type -> use heuristic: if paths ends with '/' it is treated as a dir
+                        if(e.endsWith("/")){
+                            // remove subtree
+                            missing.removeIf([relPath](const QString& entry) -> bool{
+                                return entry.startsWith(relPath);
+                            });
+                        }else{
+                            missing.removeOne(path);
+                        }
+                    }
                 }
+
+                for(const QString& line : missing)
+                    std::cout << line.toStdString() << '\n';
             }
         }
 
-        for(const QString& line : missing)
-            std::cout << line.toStdString() << '\n';
-        return 0;
+        return exitCode;
     }catch(std::exception& e){
-        std::cerr << "checkForRemovedFiles threw an exception:\n" << e.what() << '\n';
+        std::cerr << "LibTreeHash threw an exception:\n" << e.what() << '\n';
         return -2;
     }
 }

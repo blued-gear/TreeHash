@@ -16,6 +16,8 @@ using namespace nlohmann;
 namespace TreeHash {
 std::string LibTreeHash::FILE_VERSION = "2.0";
 
+const EventListener EventListener::VOID_EVENT_LISTENER = EventListener();
+
 class LibTreeHashPrivate{
 public:
 
