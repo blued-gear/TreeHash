@@ -61,9 +61,14 @@ private slots:
             QVERIFY2(false, "treeHash threw exception");
         }
 
-        // verify hashfile
-        expectedJson.remove("d1/f1.dat");
+        // remove expected deletion
+        {
+            QJsonObject files = expectedJson["files"].toObject();
+            files.remove("d1/f1.dat");
+            expectedJson["files"] = files;
+        }
 
+        // verify hashfile
         QFile actualJsonFile(hashfilePath);
         actualJsonFile.open(QFile::OpenModeFlag::ReadOnly);
         QJsonObject actualJson = QJsonDocument::fromJson(actualJsonFile.readAll()).object();

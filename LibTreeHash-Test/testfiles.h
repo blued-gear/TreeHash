@@ -132,7 +132,7 @@ public:
                     return QString("actual and expected hashes do not match (file: %1)").arg(file);
             }
 
-            if(actual.count() != expected.count())
+            if(actualFiles.count() != expectedFiles.count())
                 return QString("actual and expected had different file-counts (actual: %1, expected: %2)").arg(actual.count(), expected.count());
         }
 
