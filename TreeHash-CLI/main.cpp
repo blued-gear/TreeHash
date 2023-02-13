@@ -3,6 +3,7 @@
 #include <iostream>
 #include <QDir>
 #include <QFile>
+#include <QMetaEnum>
 #include "libtreehash.h"
 
 /* exit codes:
@@ -87,7 +88,7 @@ void setupCommands(QCommandLineParser& parser){
     parser.addOptions({
         {{"m", "mode"},
             "mode of operation",
-            "'update', 'update_new' or 'verify'"},
+            "'update', 'update_new', 'update_mod' or 'verify'"},
         {{"l", "loglevel"},
             "sets the verbosity of the log ('w' is default)",
             "'q' -> print nothing, 'e' -> show only errors, 'w' -> show errors and warnings, 'a' -> show erroes, warnings and processed files"},
@@ -125,8 +126,8 @@ void setupCommands(QCommandLineParser& parser){
 }
 
 int execNormal(QCommandLineParser& args){
-    if(args.values("r").size() != 1){
-        std::cerr << "root must be set exactly once\n";
+    if(args.values("r").size() > 1){
+        std::cerr << "root must be set no more than once\n";
         return -1;
     }
     if(args.values("f").size() != 1){
@@ -165,67 +166,7 @@ int execNormal(QCommandLineParser& args){
         return -1;
     }
 
-    const QString modeStr = args.value("m");
-    TreeHash::RunMode mode;
-    if(modeStr == "update"){
-        mode = TreeHash::RunMode::UPDATE;
-    }else if(modeStr == "update_new"){
-        mode = TreeHash::RunMode::UPDATE_NEW;
-    }else if(modeStr == "verify"){
-        mode = TreeHash::RunMode::VERIFY;
-    }else{
-        std::cerr << "mode has an invalid value\n\n";
-        args.showHelp(-1);
-        return -1;
-    }
-
-    QCryptographicHash::Algorithm hashAlg = QCryptographicHash::Algorithm::Keccak_512;
-    if(args.isSet("hash-alg")){
-        const QString hashAlgStr = args.value("hash-alg");
-        if(hashAlgStr == "Sha256")
-            hashAlg = QCryptographicHash::Algorithm::Sha256;
-        else if(hashAlgStr == "Sha512")
-            hashAlg = QCryptographicHash::Algorithm::Sha512;
-        else if(hashAlgStr == "Sha3_256")
-            hashAlg = QCryptographicHash::Algorithm::Sha3_256;
-        else if(hashAlgStr == "Sha3_512")
-            hashAlg = QCryptographicHash::Algorithm::Sha3_512;
-        else if(hashAlgStr == "Keccak_256")
-            hashAlg = QCryptographicHash::Algorithm::Keccak_256;
-        else if(hashAlgStr == "Keccak_512")
-            hashAlg = QCryptographicHash::Algorithm::Keccak_512;
-        else if(hashAlgStr == "Blake2b_256")
-            hashAlg = QCryptographicHash::Algorithm::Blake2b_256;
-        else if(hashAlgStr == "Blake2b_512")
-            hashAlg = QCryptographicHash::Algorithm::Blake2b_512;
-        else{
-            std::cerr << "invalid hash-algorithm\n";
-            return -1;
-        }
-    }
-
-    if(!QFileInfo(args.value("r")).isDir()){
-        std::cerr << "root does not exist or is not a directory\n";
-        return -1;
-    }
-
     bool hashfileFromStdin = args.value("f") == "-";
-
-    if(!hashfileFromStdin){
-        QFileInfo hashfileInfo(args.value("f"));
-        if(hashfileInfo.exists()){
-            if(!hashfileInfo.isFile()){
-                std::cerr << "hash-file is not a file\n";
-                return -1;
-            }
-        }else{
-            if(mode == TreeHash::RunMode::VERIFY){
-                std::cerr << "hash-file does not exist\n";
-                return -1;
-            }
-        }
-    }
-
     int exitcode = 0;
 
     TreeHash::EventListener eventListener;
@@ -271,9 +212,55 @@ int execNormal(QCommandLineParser& args){
 
     try{
         TreeHash::LibTreeHash treeHash(eventListener);
-        treeHash.setMode(mode);
-        treeHash.setHashAlgorithm(hashAlg);
-        treeHash.setRootDir(args.value("r"));
+
+        {
+            const QString modeStr = args.value("m");
+            TreeHash::RunMode mode;
+            if(modeStr == "update"){
+                mode = TreeHash::RunMode::UPDATE;
+            }else if(modeStr == "update_new"){
+                mode = TreeHash::RunMode::UPDATE_NEW;
+            }else if(modeStr == "update_mod"){
+                mode = TreeHash::RunMode::UPDATE_MODIFIED;
+            }else if(modeStr == "verify"){
+                mode = TreeHash::RunMode::VERIFY;
+            }else{
+                std::cerr << "mode has an invalid value\n\n";
+                args.showHelp(-1);
+                return -1;
+            }
+
+            treeHash.setMode(mode);
+        }
+
+        if(args.isSet("hash-alg")){
+            const QString hashAlgStr = args.value("hash-alg");
+            bool valid;
+            auto algoVal = QMetaEnum::fromType<QCryptographicHash::Algorithm>().keyToValue(hashAlgStr.toStdString().c_str(), &valid);
+            if(valid){
+                QCryptographicHash::Algorithm hashAlg = static_cast<QCryptographicHash::Algorithm>(algoVal);
+                treeHash.setHashAlgorithm(hashAlg);
+            }else{
+                std::cerr << "invalid hash-algorithm\n";
+                return -1;
+            }
+        }
+
+        if(!hashfileFromStdin){
+            QFileInfo hashfileInfo(args.value("f"));
+            if(hashfileInfo.exists()){
+                if(!hashfileInfo.isFile()){
+                    std::cerr << "hash-file is not a file\n";
+                    return -1;
+                }
+            }else{
+                if(treeHash.getRunMode() == TreeHash::RunMode::VERIFY){
+                    std::cerr << "hash-file does not exist\n";
+                    return -1;
+                }
+            }
+        }
+
         treeHash.setFiles(listFiles(args));
         treeHash.setHmacKey(args.value("k"));
 
@@ -293,6 +280,20 @@ int execNormal(QCommandLineParser& args){
             treeHash.setHashesFile(std::move(in), std::move(out), false);
         }else{
             treeHash.setHashesFilePath(args.value("f"));
+        }
+
+
+        if(args.isSet("r")){
+            if(!QFileInfo(args.value("r")).isDir()){
+                std::cerr << "root does not exist or is not a directory\n";
+                return -1;
+            }
+            treeHash.setRootDir(args.value("r"));
+        }else{
+            if(treeHash.getRootDir().isNull()){
+                std::cerr << "root was not provided and was not stored in hashfile\n";
+                return -1;
+            }
         }
 
         treeHash.run();
@@ -453,11 +454,6 @@ int execRemoved(QCommandLineParser& args){
 
 int exec(QCommandLineParser& parser){
     // check for mandatory options
-    if(!parser.isSet("r")){
-        std::cerr << "option -r (root) is mandatory\n\n";
-        parser.showHelp(-1);
-        return -1;
-    }
     if(!parser.isSet("f")){
         std::cerr << "option -f (hashfile) is mandatory\n\n";
         parser.showHelp(-1);

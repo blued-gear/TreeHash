@@ -23,7 +23,7 @@ public:
     std::unique_ptr<QFileDevice> hashFileSrc, hashFileDst;
     bool truncateHashFileDst = true;
     QStringList files;
-    QString rootDir = QStringLiteral("/");
+    QString rootDir;
     QString hmacKey;
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Algorithm::Keccak_512;
 
