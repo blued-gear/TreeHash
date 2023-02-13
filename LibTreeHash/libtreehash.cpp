@@ -265,7 +265,7 @@ QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDi
         QFileInfo fi(e);
         if(!fi.isFile()) continue;
         if(!includeLinkedFiles && fi.isSymLink()) continue;
-        ret.append(e);
+        ret.append(fi.absoluteFilePath());
     }
 
     return ret;

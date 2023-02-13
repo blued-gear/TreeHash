@@ -29,7 +29,7 @@ QStringList listFiles(QCommandLineParser& args){
             fi.setFile(path);
 
             if(fi.isDir()){
-                files.append(TreeHash::listAllFilesInDir(path, includeLinkedDirs, includeLinkedFiles));
+                files.append(TreeHash::listAllFilesInDir(fi.absoluteFilePath(), includeLinkedDirs, includeLinkedFiles));
             }else if(fi.isFile()){
                 files.append(path);
             }else{
