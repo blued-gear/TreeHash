@@ -26,35 +26,35 @@ public:
      * @param path the path of the processed file
      * @param success UPDATE: if no error occurred; VERIFY: if the hash matched, if any existed
      */
-    void (*onFileProcessed)(QString path, bool success) = nullptr;
+    std::function<void(QString, bool)> onFileProcessed;
     /**
      * @brief called when an anomaly occurred
      *      ATTENTION: this method should not throw an exception
      * @param msg a message
      * @param path location of anomaly (mostly a file path)
      */
-    void (*onWarning)(QString msg, QString path) = nullptr;
+    std::function<void(QString msg, QString path)> onWarning;
     /**
      * @brief called when an error occurred
      *      ATTENTION: this method should not throw an exception
      * @param msg a message
      * @param path location of error (mostly a file path)
      */
-    void (*onError)(QString msg, QString path) = nullptr;
+    std::function<void(QString msg, QString path)> onError;
 
 private:
 
     void callOnFileProcessed(QString path, bool success){
-        if(onFileProcessed != nullptr)
-            (*onFileProcessed)(path, success);
+        if(onFileProcessed)
+            onFileProcessed(path, success);
     }
     void callOnWarning(QString msg, QString path){
-        if(onWarning != nullptr)
-            (*onWarning)(msg, path);
+        if(onWarning)
+            onWarning(msg, path);
     }
     void callOnError(QString msg, QString path){
-        if(onError != nullptr)
-            (*onError)(msg, path);
+        if(onError)
+            onError(msg, path);
     }
 
 };
