@@ -9,6 +9,8 @@ namespace TreeHash{
 enum class RunMode{
     /// updates the hashes of all files
     UPDATE,
+    /// adds the hashes of new files
+    UPDATE_NEW,
     /// checks all files against the stored hashes
     VERIFY
 };
@@ -151,7 +153,7 @@ public:
  * @param root the root directory to start the search
  * @param includeLinkedDirs if true dir-symlinks will be followed
  * @param includeLinkedFiles if true file-symlinks will be included
- * @return a list with the paths of all files in root
+ * @return a list with the absolute paths of all files in root
  */
 QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles);
 
