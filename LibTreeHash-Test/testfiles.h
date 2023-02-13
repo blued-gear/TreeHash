@@ -1,6 +1,7 @@
 #ifndef TESTFILES_H
 #define TESTFILES_H
 
+#include <QtTest>
 #include <QTemporaryDir>
 #include <QDir>
 #include <QFile>
@@ -24,10 +25,9 @@ class TestFiles{
 
 public:
     void setup(bool d1, bool d1False, bool d2){
-        Q_ASSERT(dirPath.isValid());
+        QVERIFY(dirPath.isValid());
         dir.setPath(dirPath.path());
         printf("testDir: %s\n", dir.path().toStdString().c_str());
-
 
         if(d1){
             extractD1();
@@ -106,11 +106,11 @@ private:
     void extractD1(){
         // create dirs
         d1.setPath(dir.path() + "/d1");
-        Q_ASSERT(dir.mkdir("d1"));
+        QVERIFY(dir.mkdir("d1"));
         d1_data = QDir(d1.path() + "/tree");
-        Q_ASSERT(d1.mkdir("tree"));
+        QVERIFY(d1.mkdir("tree"));
         d1_hashes = QDir(d1.path() + "/hashes");
-        Q_ASSERT(d1.mkdir("hashes"));
+        QVERIFY(d1.mkdir("hashes"));
 
         extractZip(":/testfiles/d1.zip", d1_data);
     }
@@ -118,13 +118,13 @@ private:
     void extractD1False(){
         // create dirs
         d1False.setPath(dir.path() + "/d1False");
-        Q_ASSERT(dir.mkdir("d1False"));
+        QVERIFY(dir.mkdir("d1False"));
         d1False_data = QDir(d1False.path() + "/tree");
         d1False_hashes = QDir(d1False.path() + "/hashes");
 
         extractZip(":/testfiles/d1-false.zip", d1False);
-        Q_ASSERT(d1False_data.exists());
-        Q_ASSERT(d1False_hashes.exists());
+        QVERIFY(d1False_data.exists());
+        QVERIFY(d1False_hashes.exists());
 
         d1False_hashfile = d1False_hashes.path() + "/hashes.json";
         d1False_hashfile2 = d1False_hashes.path() + "/expected.json";
@@ -134,32 +134,32 @@ private:
     void extractD2(){
         // create dirs
         d2.setPath(dir.path() + "/d2");
-        Q_ASSERT(dir.mkdir("d2"));
+        QVERIFY(dir.mkdir("d2"));
         d2_data = QDir(d2.path() + "/tree");
-        Q_ASSERT(d2.mkdir("tree"));
+        QVERIFY(d2.mkdir("tree"));
         d2_hashes = QDir(d2.path() + "/hashes");
-        Q_ASSERT(d2.mkdir("hashes"));
+        QVERIFY(d2.mkdir("hashes"));
 
         extractZip(":/testfiles/d2.zip", d2_data);
     }
 
     void extractZip(QString src, QDir dest){
         QuaZip testData(src);
-        Q_ASSERT(testData.open(QuaZip::Mode::mdUnzip));
+        QVERIFY(testData.open(QuaZip::Mode::mdUnzip));
         QFile out;
         for(bool hasNext = testData.goToFirstFile(); hasNext; hasNext = testData.goToNextFile()){
             QuaZipFileInfo zipfileEntry;
-            Q_ASSERT(testData.getCurrentFileInfo(&zipfileEntry));
+            QVERIFY(testData.getCurrentFileInfo(&zipfileEntry));
 
             if(!zipfileEntry.name.contains(".")){
                 // create subdir
-                Q_ASSERT(dest.mkdir(zipfileEntry.name));
+                QVERIFY(dest.mkdir(zipfileEntry.name));
             }else{
                 // extract file
                 out.setFileName(dest.path() + "/" + zipfileEntry.name);
-                Q_ASSERT(out.open(QFile::OpenModeFlag::WriteOnly));
+                QVERIFY(out.open(QFile::OpenModeFlag::WriteOnly));
                 QuaZipFile zipfile(&testData);
-                Q_ASSERT(zipfile.open(QFile::OpenModeFlag::ReadOnly));
+                QVERIFY(zipfile.open(QFile::OpenModeFlag::ReadOnly));
 
                 QByteArray zipfileContent = zipfile.readAll();
                 out.write(zipfileContent);
@@ -171,9 +171,9 @@ private:
 
     void extractResFile(QString src, QString dest){
         QFile srcFile(src);
-        Q_ASSERT(srcFile.open(QFile::OpenModeFlag::ReadOnly));
+        QVERIFY(srcFile.open(QFile::OpenModeFlag::ReadOnly));
         QFile destFile(dest);
-        Q_ASSERT(destFile.open(QFile::OpenModeFlag::WriteOnly));
+        QVERIFY(destFile.open(QFile::OpenModeFlag::WriteOnly));
         destFile.write(srcFile.readAll());
         destFile.flush();
     }

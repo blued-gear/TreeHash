@@ -25,7 +25,7 @@ private slots:
 
         // delete a subdir
         QDir del(files.getD1Data().absoluteFilePath("d1/d2"));
-        Q_ASSERT(del.removeRecursively());
+        QVERIFY(del.removeRecursively());
     }
 
     void cleanupTestCase(){
