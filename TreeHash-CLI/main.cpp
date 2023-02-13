@@ -96,7 +96,8 @@ void setupCommands(QCommandLineParser& parser){
             "root-path"},
         {{"f", "hashfile"},
             "path to the hash-file (file which will contain the generated hashes)",
-            "file-path"},
+            "file-path; if set to '-' the data will be read from stdin and (if in update-mode) be written to stdout "
+                "(all log-messages will be written to stderr)"},
         {{"e", "exclude"},
             "path to file or directory to exclude from hashing (relative to --root)",
             "path to exclude"},
@@ -207,44 +208,61 @@ int execNormal(QCommandLineParser& args){
         std::cerr << "root does not exist or is not a directory\n";
         return -1;
     }
-    QFileInfo hashfileInfo(args.value("f"));
-    if(hashfileInfo.exists()){
-        if(!hashfileInfo.isFile()){
-            std::cerr << "hash-file is not a file\n";
-            return -1;
-        }
-    }else{
-        if(mode == TreeHash::RunMode::VERIFY){
-            std::cerr << "hash-file does not exist\n";
-            return -1;
+
+    bool hashfileFromStdin = args.value("f") == "-";
+
+    if(!hashfileFromStdin){
+        QFileInfo hashfileInfo(args.value("f"));
+        if(hashfileInfo.exists()){
+            if(!hashfileInfo.isFile()){
+                std::cerr << "hash-file is not a file\n";
+                return -1;
+            }
+        }else{
+            if(mode == TreeHash::RunMode::VERIFY){
+                std::cerr << "hash-file does not exist\n";
+                return -1;
+            }
         }
     }
 
     int exitcode = 0;
 
     TreeHash::EventListener eventListener;
-    eventListener.onFileProcessed = [loglevel, &exitcode](QString path, bool success) -> void{
+    eventListener.onFileProcessed = [loglevel, &exitcode, hashfileFromStdin](QString path, bool success) -> void{
         if(!success){
             if(loglevel >= 1){
-                std::cout << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
+                if(hashfileFromStdin)
+                    std::cerr << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
+                else
+                    std::cout << QStringLiteral("file unsuccessful: %1\n").arg(path).toStdString();
             }
 
             if(exitcode < 1)
                 exitcode = 1;
         }else{
             if(loglevel >= 3){
-                 std::cout << QStringLiteral("file successful: %1\n").arg(path).toStdString();
+                if(hashfileFromStdin)
+                    std::cerr << QStringLiteral("file successful: %1\n").arg(path).toStdString();
+                else
+                    std::cout << QStringLiteral("file successful: %1\n").arg(path).toStdString();
             }
         }
     };
-    eventListener.onWarning = [loglevel](QString msg, QString path) -> void{
+    eventListener.onWarning = [loglevel, hashfileFromStdin](QString msg, QString path) -> void{
         if(loglevel >= 2){
-            std::cout << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
+            if(hashfileFromStdin)
+                std::cerr << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
+            else
+                std::cout << QStringLiteral("WARNING: %1 @ %2\n").arg(msg, path).toStdString();
         }
     };
-    eventListener.onError = [loglevel, &exitcode](QString msg, QString path) -> void{
+    eventListener.onError = [loglevel, &exitcode, hashfileFromStdin](QString msg, QString path) -> void{
         if(loglevel >= 1){
-            std::cout << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
+            if(hashfileFromStdin)
+                std::cerr << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
+            else
+                std::cout << QStringLiteral("ERROR: %1 @ %2\n").arg(msg, path).toStdString();
         }
 
         if(exitcode < 2)
@@ -256,9 +274,26 @@ int execNormal(QCommandLineParser& args){
         treeHash.setMode(mode);
         treeHash.setHashAlgorithm(hashAlg);
         treeHash.setRootDir(args.value("r"));
-        treeHash.setHashesFilePath(args.value("f"));
         treeHash.setFiles(listFiles(args));
         treeHash.setHmacKey(args.value("k"));
+
+        if(hashfileFromStdin){
+            auto in = std::make_unique<QFile>();
+            auto out = std::make_unique<QFile>();
+
+            if(!in->open(stdin, QFile::OpenModeFlag::ReadOnly, QFile::FileHandleFlag::DontCloseHandle)){
+                std::cerr << QStringLiteral("unable to open stdin (%1)\n").arg(in->errorString()).toStdString();
+                return -2;
+            }
+            if(!out->open(stdout, QFile::OpenModeFlag::WriteOnly, QFile::FileHandleFlag::DontCloseHandle)){
+                std::cerr << QStringLiteral("unable to open stdout (%1)\n").arg(out->errorString()).toStdString();
+                return -2;
+            }
+
+            treeHash.setHashesFile(std::move(in), std::move(out));
+        }else{
+            treeHash.setHashesFilePath(args.value("f"));
+        }
 
         treeHash.run();
 
