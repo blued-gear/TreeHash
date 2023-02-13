@@ -18,6 +18,7 @@ public:
 
     EventListener eventListener;
     std::unique_ptr<QFileDevice> hashFileSrc, hashFileDst;
+    bool truncateHashFileDst = true;
     QStringList files;
     QString hmacKey;
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Algorithm::Keccak_512;
@@ -91,7 +92,7 @@ void LibTreeHash::setHashesFilePath(const QString path){
     setHashesFile(std::move(srcFile), std::move(dstFile));
 }
 
-void LibTreeHash::setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dst)
+void LibTreeHash::setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dst, bool truncateDest)
 {
     if(this->priv->hashFileSrc != nullptr && this->priv->hashFileSrc->isOpen()){
         this->priv->hashFileSrc->close();
@@ -102,6 +103,7 @@ void LibTreeHash::setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_
 
     this->priv->hashFileSrc = std::move(src);
     this->priv->hashFileDst = std::move(dst);
+    this->priv->truncateHashFileDst = truncateDest;
 }
 
 const QFileDevice& LibTreeHash::getHashesFileSrc() const
@@ -158,13 +160,17 @@ bool LibTreeHashPrivate::storeHashes(){
 
     // rewrite file
     QFileDevice& file = *this->hashFileDst;
-    if(!file.resize(0)){
-        this->eventListener.callOnError(QStringLiteral("unable to save hashes: ") + file.errorString(),
-                                        QStringLiteral("saving hashes"));
-        return false;
+
+    if(this->truncateHashFileDst){
+        if(!file.resize(0)){
+            this->eventListener.callOnError(QStringLiteral("unable to save hashes (truncate): ") + file.errorString(),
+                                            QStringLiteral("saving hashes"));
+            return false;
+        }
     }
+
     if(file.write(jsonData) == -1){
-        this->eventListener.callOnError(QStringLiteral("unable to save hashes: ") + file.errorString(),
+        this->eventListener.callOnError(QStringLiteral("unable to save hashes (write): ") + file.errorString(),
                                         QStringLiteral("saving hashes"));
         return false;
     }

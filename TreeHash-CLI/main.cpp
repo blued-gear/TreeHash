@@ -290,7 +290,7 @@ int execNormal(QCommandLineParser& args){
                 return -2;
             }
 
-            treeHash.setHashesFile(std::move(in), std::move(out));
+            treeHash.setHashesFile(std::move(in), std::move(out), false);
         }else{
             treeHash.setHashesFilePath(args.value("f"));
         }

@@ -148,8 +148,9 @@ public:
     /**
      * @brief sets the source and destination of the file containing the hashes
      *      ATTENTION: do not change the path while a process is running
+     * @param truncateDest if set to true dest will be resized to 0 before the new contents are written
      */
-    void setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dest);
+    void setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dest, bool truncateDest = true);
 
     /**
      * @brief returns the currently used hash-file source
