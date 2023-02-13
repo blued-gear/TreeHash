@@ -4,6 +4,13 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QStringList>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QCryptographicHash>
+#include <unistd.h>
+
+
+constexpr QCryptographicHash::Algorithm HASH_ALGORITHM = QCryptographicHash::Algorithm::Keccak_512;
 
 using namespace TreeHash;
 
@@ -14,6 +21,12 @@ public:
     EventListener eventListener;
     QFile hashFile;
     QStringList files;
+    QJsonObject hashes;
+
+    bool loadHashes();
+    bool storeHashes();
+
+    QString computeFileHash(QString path);
 };
 }
 
@@ -42,10 +55,15 @@ void LibTreeHash::setHashesFile(const QString path)
 {
     // check if path is a readable file
     if(!QFileInfo::exists(path)){
-        throw std::invalid_argument(QStringLiteral("file for HashesFile dies not exist (%1)").arg(path).toStdString());
+        // try creating a new file
+        QFile newFile(path);
+        if(!newFile.open(QFile::OpenModeFlag::NewOnly | QFile::OpenModeFlag::WriteOnly))
+            throw std::invalid_argument(QStringLiteral("file for HashesFile does not exist an can not be created (%1)").arg(path).toStdString());
     }
 
     QFile& file = this->priv->hashFile;
+    if(file.isOpen())
+        file.close();
     file.setFileName(path);
 }
 
@@ -64,6 +82,145 @@ const QStringList LibTreeHash::getFiles()
     return this->priv->files;
 }
 
+void LibTreeHash::run(){
+    // open file
+    auto openFlags = this->runMode == RunMode::VERIFY ? QFile::OpenModeFlag::ReadOnly
+                                                      : (QFile::OpenModeFlag::ReadWrite | QFile::OpenModeFlag::Append);
+    QFile& hashFile = this->priv->hashFile;
+    if(!hashFile.open(openFlags)){
+        QString fileErr = hashFile.errorString();
+        this->priv->eventListener.callOnError(QStringLiteral("unable to load hashes: can not open file (%1)").arg(fileErr),
+                                              QStringLiteral("loading hashes"));
+        return;
+    }
+
+    if(!this->priv->loadHashes())
+        return;
+
+    QDir root(this->rootDir);
+    if(!root.exists()){
+        this->priv->eventListener.callOnWarning(QStringLiteral("the root-dir dies not exist"), QStringLiteral("run"));
+    }
+
+    QFileInfo fi;
+    QString hash, relPath;
+    for(QString& f : this->priv->files){
+        // check if is file
+        fi.setFile(f);
+        if(!fi.isFile()){
+            this->priv->eventListener.callOnWarning(QStringLiteral("item on file-list is not a file; skipping"), f);
+            this->priv->eventListener.callOnFileProcessed(f, false);
+            continue;
+        }
+
+        // create relative path
+        relPath = root.relativeFilePath(f);
+        if(relPath.contains(QStringLiteral("../"))){
+            this->priv->eventListener.callOnWarning(QStringLiteral("file is not in root-dir or its subdirs"), f);
+        }
+
+        // compute hash
+        hash = this->priv->computeFileHash(f);
+        if(hash.isNull()){
+            this->priv->eventListener.callOnFileProcessed(f, false);
+            continue;
+        }
+
+        switch (this->runMode) {
+            case RunMode::VERIFY:{
+                // compare with list
+                auto entry = this->priv->hashes.value(relPath);
+                if(entry.isUndefined()){
+                    this->priv->eventListener.callOnWarning(QStringLiteral("file has no saved hash; skipping"), f);
+                    this->priv->eventListener.callOnFileProcessed(f, false);
+                }else{
+                    if(!entry.isString()){
+                        this->priv->eventListener.callOnError(QStringLiteral("stored hash is not of type string; skipping"), f);
+                        this->priv->eventListener.callOnFileProcessed(f, false);
+                    }else{
+                        bool matches = hash == entry.toString();
+                        this->priv->eventListener.callOnFileProcessed(f, matches);
+                    }
+                }
+                break;
+            }
+            case RunMode::UPDATE:{
+                this->priv->hashes.insert(relPath, QJsonValue(hash));
+                this->priv->eventListener.callOnFileProcessed(f, true);
+                break;
+            }
+        }
+    }
+
+    if(this->runMode == RunMode::UPDATE){
+        this->priv->storeHashes();
+    }
+}
+
+bool LibTreeHashPrivate::loadHashes(){
+    if(this->hashFile.size() == 0){
+        // new file -> empty JsonObject
+        this->hashes = QJsonObject();
+        return true;
+    }else{
+        this->hashFile.seek(0);
+        QJsonParseError parseErr;
+        QJsonDocument json = QJsonDocument::fromJson(this->hashFile.readAll(), &parseErr);
+
+        if(parseErr.error != QJsonParseError::NoError){
+            this->eventListener.callOnError(QStringLiteral("unable to load hashes: file is malformed (invalid JSON)"),
+                                            QStringLiteral("loading hashes"));
+            return false;
+        }
+
+        if(!json.isObject()){
+            this->eventListener.callOnError(QStringLiteral("unable to load hashes: file is malformed (expected JSON-Object)"),
+                                            QStringLiteral("loading hashes"));
+            return false;
+        }
+
+        this->hashes = json.object();
+        return true;
+    }
+}
+
+bool LibTreeHashPrivate::storeHashes(){
+    QJsonDocument json(this->hashes);
+    QByteArray jsonData = json.toJson(QJsonDocument::JsonFormat::Indented);
+
+    // rewrite file
+    QFile& file = this->hashFile;
+    if(!file.resize(0)){
+        this->eventListener.callOnError(QStringLiteral("unable to save hashes: ") + file.errorString(),
+                                        QStringLiteral("saving hashes"));
+        return false;
+    }
+    if(file.write(jsonData) == -1){
+        this->eventListener.callOnError(QStringLiteral("unable to save hashes: ") + file.errorString(),
+                                        QStringLiteral("saving hashes"));
+        return false;
+    }
+
+    file.flush();
+    fsync(file.handle());// without this the tests read only an empty file
+
+    return true;
+}
+
+QString LibTreeHashPrivate::computeFileHash(QString path){
+    QFile file(path);
+    if(!file.open(QFile::OpenModeFlag::ReadOnly | QFile::OpenModeFlag::ExistingOnly)){
+        this->eventListener.callOnError(QStringLiteral("unable to read file (%1)").arg(file.errorString()), path);
+        return QString();
+    }
+
+    QCryptographicHash hash(HASH_ALGORITHM);
+    if(!hash.addData(&file)){
+        this->eventListener.callOnError(QStringLiteral("unable to read file"), path);
+        return QString();
+    }
+
+    return QString(hash.result().toHex());
 }
 
 QStringList listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)

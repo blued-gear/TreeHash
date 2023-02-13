@@ -16,6 +16,7 @@ enum class RunMode{
 class EventListener{
 
     friend class LibTreeHash;
+    friend class LibTreeHashPrivate;
 
 public:
 
@@ -70,6 +71,7 @@ class LibTreeHash
 
     LibTreeHashPrivate* priv;
     RunMode runMode = RunMode::VERIFY;
+    QString rootDir = QStringLiteral("/");
 
 public:
     LibTreeHash(const EventListener& listener);
@@ -77,6 +79,8 @@ public:
     ~LibTreeHash();
 
     LibTreeHash& operator=(LibTreeHash&& mve);
+
+    void run();
 
     /**
      * @brief sets the mode of operation.
@@ -91,6 +95,21 @@ public:
      */
     RunMode getRunMode(){
         return this->runMode;
+    }
+
+    /**
+     * @brief the root-dir is used do create relative paths for the file-entries in the hash-file
+     *      ATTENTION: do not change the root-dir while a process is running
+     * @param dir the root dir
+     */
+    void setRootDir(QString dir){
+        this->rootDir = dir;
+    }
+    /**
+     * @brief return the current root-dir
+     */
+    QString getRootDir(){
+        return this->rootDir;
     }
 
     /**
