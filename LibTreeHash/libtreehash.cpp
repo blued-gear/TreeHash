@@ -34,6 +34,16 @@ public:
     QString computeFileHash(QString path);
 
     static QJsonObject loadHashes(QFileDevice& hashFile, QString* error);
+
+    /**
+     * @brief if file is open checks if it is readable / writeable;
+     *          if it is not open it will try to open it with the appropriate mode
+     * @param file the file to check
+     * @param write if true make sure the file is writeable
+     * @param error if not nullptr an error-message will be stored on failure
+     * @return true if file is open and readable / writeable, false otherwise
+     */
+    static bool ensureFileOpen(QFileDevice& file, bool write, QString* error);
 };
 }
 
@@ -121,12 +131,12 @@ QString LibTreeHash::getHmacKey() const{
 
 void LibTreeHash::run(){
     QString openError;
-    if(!LibTreeHash::ensureFileOpen(*this->priv->hashFileSrc, false, &openError)){
+    if(!LibTreeHashPrivate::ensureFileOpen(*this->priv->hashFileSrc, false, &openError)){
         throw std::invalid_argument(QStringLiteral("unable to open HashesFile source: %1").arg(openError).toStdString());
     }
 
     if(this->runMode == RunMode::UPDATE || this->runMode == RunMode::UPDATE_NEW){
-        if(!LibTreeHash::ensureFileOpen(*this->priv->hashFileDst, true, &openError)){
+        if(!LibTreeHashPrivate::ensureFileOpen(*this->priv->hashFileDst, true, &openError)){
             throw std::invalid_argument(QStringLiteral("unable to open HashesFile destination: %1").arg(openError).toStdString());
         }
     }
@@ -138,40 +148,6 @@ void LibTreeHash::run(){
     if(this->runMode == RunMode::UPDATE || this->runMode == RunMode::UPDATE_NEW){
         this->priv->storeHashes();
     }
-}
-
-bool LibTreeHash::ensureFileOpen(QFileDevice& file, bool write, QString* error){
-    if(write){
-        if(!file.isOpen()){
-            if(!file.open(QFileDevice::OpenModeFlag::ExistingOnly | QFileDevice::OpenModeFlag::ReadWrite)){
-                if(error != nullptr)
-                    *error = QStringLiteral("file can not be opened (%1)").arg(file.errorString());
-                return false;
-            }
-        }else{
-            if(!file.isWritable()){
-                if(error != nullptr)
-                    *error = QStringLiteral("file is not writeable");
-                return false;
-            }
-        }
-    }else{
-        if(!file.isOpen()){
-            if(!file.open(QFileDevice::OpenModeFlag::ExistingOnly | QFileDevice::OpenModeFlag::ReadOnly)){
-                if(error != nullptr)
-                    *error = QStringLiteral("file can not be opened (%1)").arg(file.errorString());
-                return false;
-            }
-        }else{
-            if(!file.isReadable()){
-                if(error != nullptr)
-                    *error = QStringLiteral("file is not readable");
-                return false;
-            }
-        }
-    }
-
-    return true;
 }
 
 bool LibTreeHashPrivate::storeHashes(){
@@ -353,6 +329,40 @@ QJsonObject LibTreeHashPrivate::loadHashes(QFileDevice& hashFile, QString* error
 
         return json.object();
     }
+}
+
+bool LibTreeHashPrivate::ensureFileOpen(QFileDevice& file, bool write, QString* error){
+    if(write){
+        if(!file.isOpen()){
+            if(!file.open(QFileDevice::OpenModeFlag::ExistingOnly | QFileDevice::OpenModeFlag::ReadWrite)){
+                if(error != nullptr)
+                    *error = QStringLiteral("file can not be opened (%1)").arg(file.errorString());
+                return false;
+            }
+        }else{
+            if(!file.isWritable()){
+                if(error != nullptr)
+                    *error = QStringLiteral("file is not writeable");
+                return false;
+            }
+        }
+    }else{
+        if(!file.isOpen()){
+            if(!file.open(QFileDevice::OpenModeFlag::ExistingOnly | QFileDevice::OpenModeFlag::ReadOnly)){
+                if(error != nullptr)
+                    *error = QStringLiteral("file can not be opened (%1)").arg(file.errorString());
+                return false;
+            }
+        }else{
+            if(!file.isReadable()){
+                if(error != nullptr)
+                    *error = QStringLiteral("file is not readable");
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 QStringList TreeHash::listAllFilesInDir(const QString root, bool includeLinkedDirs, bool includeLinkedFiles)

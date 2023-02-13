@@ -172,17 +172,6 @@ public:
      * @brief returns the paths of all files which will be (or are) processed
      */
     const QStringList getFiles() const;
-
-private:
-    /**
-     * @brief if file is open checks if it is readable / writeable;
-     *          if it is not open it will try to open it with the appropriate mode
-     * @param file the file to check
-     * @param write if true make sure the file is writeable
-     * @param error if not nullptr an error-message will be stored on failure
-     * @return true if file is open and readable / writeable, false otherwise
-     */
-    static bool ensureFileOpen(QFileDevice& file, bool write, QString* error);
 };
 
 /**
