@@ -24,6 +24,10 @@ public:
 private slots:
     void initTestCase(){
         files.setup(true, false, false);
+
+        hashFileName = "createFullHashes.json";
+        hashFilesDir = files.getD1Hashes();
+        dataDir = files.getD1Data();
     }
 
     void cleanupTestCase(){
@@ -41,10 +45,17 @@ private slots:
     }
 
     void createFullHashes(){
-        const QString hashFileName("createFullHashes.json");
-        QDir dataDir = files.getD1Data();
-        QDir hashFilesDir = files.getD1Hashes();
+        runTreeHash();
+        verifyHashFile();
+        verifyFileDate();
+    }
 
+private:
+    QString hashFileName;
+    QDir hashFilesDir;
+    QDir dataDir;
+
+    void runTreeHash(){
         EventListener listener;
         listener.onError = [](QString msg, QString path) -> void{
             QVERIFY2(false, ("treeHash reported error: " + msg).toStdString().c_str());
@@ -71,8 +82,9 @@ private slots:
         }catch(...){
             QVERIFY2(false, "treeHash threw exception");
         }
+    }
 
-        // verify created file
+    void verifyHashFile(){
         QFile expectedJsonFile = files.getD1ExpectedHashFile();
         expectedJsonFile.open(QFile::OpenModeFlag::ReadOnly);
         QJsonObject expectedJson = QJsonDocument::fromJson(expectedJsonFile.readAll()).object();
@@ -86,6 +98,21 @@ private slots:
                  QString("created hash-file did not contain the expected content (%1)").arg(cmp).toStdString().c_str());
     }
 
+    void verifyFileDate(){
+        const QString file("d1/f1.dat");
+
+        QFile actualJsonFile(hashFilesDir.path() + "/" + hashFileName);
+        actualJsonFile.open(QFile::OpenModeFlag::ReadOnly);
+        QJsonObject actualJson = QJsonDocument::fromJson(actualJsonFile.readAll()).object();
+
+        const qint64 expecteModificationTime = QFileInfo(dataDir.filePath(file)).lastModified().toSecsSinceEpoch();
+        const qint64 actualModificationTime = actualJson
+                .value("files").toObject()
+                .value(file).toObject()
+                .value("lastModified").toInteger(-1);
+
+        QVERIFY2(actualModificationTime == expecteModificationTime, "lastModified value did not match expected");
+    }
 };
 
 #include "tst_freshupdatetest.moc"
