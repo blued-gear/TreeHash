@@ -22,6 +22,7 @@ QStringList listFiles(QCommandLineParser& args){
     const bool includeLinkedDirs = !args.isSet("no-linked-dirs");
     const bool includeLinkedFiles = !args.isSet("no-linked-files");
 
+    // 1. use included dirs or root
     if(args.isSet("i")){
         // use include
         for(const QString& i : args.values("i")){
@@ -30,10 +31,6 @@ QStringList listFiles(QCommandLineParser& args){
 
             if(fi.isDir()){
                 files.append(TreeHash::listAllFilesInDir(fi.absoluteFilePath(), includeLinkedDirs, includeLinkedFiles));
-            }else if(fi.isFile()){
-                files.append(path);
-            }else{
-                std::cerr << QStringLiteral("invalid include-path (ignoring): %1\n").arg(i).toStdString();
             }
         }
     }else{
@@ -43,7 +40,7 @@ QStringList listFiles(QCommandLineParser& args){
 
     files.removeDuplicates();
 
-    // remove excluded
+    // 2. remove excluded dirs and files
     for(const QString& e : args.values("e")){
         QString path = root.absoluteFilePath(e);
         fi.setFile(path);
@@ -57,6 +54,22 @@ QStringList listFiles(QCommandLineParser& args){
             files.removeOne(path);
         }else{
             std::cerr << QStringLiteral("invalid exclude-path (ignoring): %1\n").arg(e).toStdString();
+        }
+    }
+
+    // 3. include explicit included files
+    if(args.isSet("i")){
+        for(const QString& i : args.values("i")){
+            QString path = root.absoluteFilePath(i);
+            fi.setFile(path);
+
+            if(fi.isDir()){
+                continue;
+            }else if(fi.isFile()){
+                files.append(path);
+            }else{
+                std::cerr << QStringLiteral("invalid include-path (ignoring): %1\n").arg(i).toStdString();
+            }
         }
     }
 
