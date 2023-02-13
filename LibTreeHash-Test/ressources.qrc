@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/testfiles">
+        <file alias="d1.zip">res/d1.zip</file>
+        <file alias="d1-expected.json">res/d1-expected.json</file>
+        <file alias="d1-false.zip">res/d1-false.zip</file>
+    </qresource>
+</RCC>

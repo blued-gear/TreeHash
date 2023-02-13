@@ -1,4 +1,5 @@
 TEMPLATE = subdirs
 
 SUBDIRS += \
-    LibTreeHash
+    LibTreeHash \
+    LibTreeHash-Test
