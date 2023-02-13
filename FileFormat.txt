@@ -1,0 +1,18 @@
+{
+    "version": "<ver>",
+    "settings": {
+        "rootDir": "<path>",
+        "hashAlgorithm": "<algo>"
+    },
+    "files:": {
+        "<rel-path>": {
+            "hash": "<hash>",
+            "lastModified": "<unix-timestamp>"
+        }
+    }
+}
+
+-> Version: 2.0
+-> /settings/... -entries are optional
+-> /files/~/lastModified is optional
+

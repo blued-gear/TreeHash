@@ -13,6 +13,7 @@ SOURCES += \
     libtreehash.cpp
 
 HEADERS += \
+    ext/nlohmann/json.hpp \
     libtreehash.h
 
 # Default rules for deployment.

@@ -5,12 +5,12 @@
 #include <QDirIterator>
 #include <QStringList>
 #include <QSet>
-#include <QJsonObject>
-#include <QJsonDocument>
 #include <QMessageAuthenticationCode>
 #include <unistd.h>
+#include "ext/nlohmann/json.hpp"
 
 using namespace TreeHash;
+using namespace nlohmann;
 
 namespace TreeHash {
 class LibTreeHashPrivate{
@@ -23,7 +23,7 @@ public:
     QString hmacKey;
     QCryptographicHash::Algorithm hashAlgorithm = QCryptographicHash::Algorithm::Keccak_512;
 
-    QJsonObject hashes;
+    json hashes;
 
     bool storeHashes();
 
@@ -34,7 +34,7 @@ public:
     void processFiles(RunMode runMode, QString& rootDir);
     QString computeFileHash(QString path);
 
-    static QJsonObject loadHashes(QFileDevice& hashFile, QString* error);
+    static json loadHashes(QFileDevice& hashFile, QString* error);
 
     /**
      * @brief if file is open checks if it is readable / writeable;
@@ -155,8 +155,7 @@ void LibTreeHash::run(){
 }
 
 bool LibTreeHashPrivate::storeHashes(){
-    QJsonDocument json(this->hashes);
-    QByteArray jsonData = json.toJson(QJsonDocument::JsonFormat::Indented);
+    std::string jsonData = this->hashes.dump(4);
 
     // rewrite file
     QFileDevice& file = *this->hashFileDst;
@@ -169,7 +168,7 @@ bool LibTreeHashPrivate::storeHashes(){
         }
     }
 
-    if(file.write(jsonData) == -1){
+    if(file.write(jsonData.c_str()) == -1){
         this->eventListener.callOnError(QStringLiteral("unable to save hashes (write): ") + file.errorString(),
                                         QStringLiteral("saving hashes"));
         return false;
@@ -190,18 +189,18 @@ void LibTreeHashPrivate::verifyEntry(const QString& file, const QString& relPath
     }
 
     // compare with list
-    auto entry = this->hashes.value(relPath);
-    if(entry.isUndefined()){
-        this->eventListener.callOnWarning(QStringLiteral("file has no saved hash; skipping"), file);
-        this->eventListener.callOnFileProcessed(file, false);
-    }else{
-        if(!entry.isString()){
+    if(auto entry = this->hashes.find(relPath.toStdString()); entry != this->hashes.end()){
+        if(entry->is_string()){
+            std::string storedHash = *entry;
+            bool matches = storedHash.c_str() == hash;
+            this->eventListener.callOnFileProcessed(file, matches);
+        }else{
             this->eventListener.callOnError(QStringLiteral("stored hash is not of type string; skipping"), file);
             this->eventListener.callOnFileProcessed(file, false);
-        }else{
-            bool matches = hash == entry.toString();
-            this->eventListener.callOnFileProcessed(file, matches);
         }
+    }else{
+        this->eventListener.callOnWarning(QStringLiteral("file has no saved hash; skipping"), file);
+        this->eventListener.callOnFileProcessed(file, false);
     }
 }
 
@@ -212,7 +211,7 @@ void LibTreeHashPrivate::updateEntry(const QString& file, const QString& relPath
         return;
     }
 
-    this->hashes.insert(relPath, QJsonValue(hash));
+    this->hashes[relPath.toStdString()] = hash.toStdString();
 
     this->eventListener.callOnFileProcessed(file, true);
 }
@@ -260,7 +259,7 @@ void LibTreeHashPrivate::processFiles(RunMode runMode, QString& rootDir){
                 break;
             }
             case RunMode::UPDATE_NEW: {
-                if(!this->hashes.contains(relPath)){
+                if(!this->hashes.contains(relPath.toStdString())){
                     this->updateEntry(f, relPath);
                 }
             }
@@ -297,26 +296,30 @@ QString LibTreeHashPrivate::computeFileHash(QString path){
     }
 }
 
-QJsonObject LibTreeHashPrivate::loadHashes(QFileDevice& hashFile, QString* error){
-    QJsonParseError parseErr;
-    QJsonDocument json = QJsonDocument::fromJson(hashFile.readAll(), &parseErr);
+json LibTreeHashPrivate::loadHashes(QFileDevice& hashFile, QString* error){
+    try {
+        std::string fileContent = hashFile.readAll().toStdString();
+        if(fileContent.empty()){
+            if(error != nullptr)
+                *error = QString();
+            return json::object();
+        }
+        json loaded = json::parse(fileContent);
 
+        if(!loaded.is_object()){
+            if(error != nullptr)
+                *error = "unable to load hash-file: file is malformed (expected JSON-Object)";
+            return json::object();
+        }
 
-    if(parseErr.error != QJsonParseError::NoError){
-        if(parseErr.error != QJsonParseError::IllegalValue || hashFile.size() != 0){
-            *error = "unable to load hashes: file is malformed (invalid JSON)";
-        }// else -> it was probably an empty file
-
-        return QJsonObject();
+        if(error != nullptr)
+            *error = QString();
+        return loaded;
+    } catch (std::exception& e) {
+        if(error != nullptr)
+            *error = e.what();
+        return json::object();
     }
-
-    if(!json.isObject()){
-        *error = "unable to load hashes: file is malformed (expected JSON-Object)";
-
-        return QJsonObject();
-    }
-
-    return json.object();
 }
 
 bool LibTreeHashPrivate::ensureFileOpen(QFileDevice& file, bool write, QString* error){
@@ -398,25 +401,26 @@ void TreeHash::cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst,
     }
 
     QString loadError;
-    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
+    json hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
     if(!loadError.isNull()){
-        *error = loadError;
+        if(error != nullptr)
+            *error = loadError;
         return;
     }
 
     // filter hashes
     QSet<QString> keepSet(keep.begin(), keep.end());
-    QJsonObject filteredHashes;
-    for(const QString& f : hashes.keys()){
+    json filteredHashes;
+    for(auto iter = hashes.begin(); iter != hashes.end(); iter++){
+        QString f = QString::fromStdString(iter.key());
         QString absPath = rootDir.absoluteFilePath(f);
         if(keepSet.contains(f) || keepSet.contains(absPath)){
-            filteredHashes.insert(f, hashes.value(f));
+            filteredHashes[iter.key()] = iter.value();
         }
     }
 
     // save hashes
-    QJsonDocument json(filteredHashes);
-    QByteArray jsonData = json.toJson(QJsonDocument::JsonFormat::Indented);
+    std::string jsonData = filteredHashes.dump(4);
 
     if(truncDst){
         if(!hashfileDst.resize(0)){
@@ -426,7 +430,7 @@ void TreeHash::cleanHashFile(QFileDevice& hashfileSrc, QFileDevice& hashfileDst,
         }
     }
 
-    if(hashfileDst.write(jsonData) == -1){
+    if(hashfileDst.write(jsonData.c_str()) == -1){
         if(error != nullptr)
             *error = QStringLiteral("unable to save hashes: ") + hashfileDst.errorString();
         return;
@@ -449,7 +453,6 @@ QStringList TreeHash::checkForRemovedFiles(QFileDevice& hashfileSrc, const QStri
     if(!rootDir.exists()){
         if(error != nullptr)
             *error = QStringLiteral("root does not exist");
-
         return QStringList();
     }
 
@@ -457,15 +460,17 @@ QStringList TreeHash::checkForRemovedFiles(QFileDevice& hashfileSrc, const QStri
         return QStringList();
 
     QString loadError;
-    QJsonObject hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
+    json hashes = LibTreeHashPrivate::loadHashes(hashfileSrc, &loadError);
     if(!loadError.isNull()){
-        *error = loadError;
+        if(error != nullptr)
+            *error = loadError;
         return QStringList();
     }
 
     // find all removed files
     QStringList removed;
-    for(const QString& file : hashes.keys()){
+    for(auto iter = hashes.begin(); iter != hashes.end(); iter++){
+        QString file = QString::fromStdString(iter.key());
         QString absPath = rootDir.absoluteFilePath(file);
         if(!files.contains(absPath)){
             removed.append(file);
