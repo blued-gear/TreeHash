@@ -29,6 +29,9 @@ public:
 
     json hashFileData;
 
+    bool rootSet = false;
+    bool hashAlgoSet = false;
+
     bool saveHashFile();
 
     void verifyEntry(const QString& file, const QString& relPath);
@@ -36,7 +39,7 @@ public:
 
     void openHashFile();
 
-    void loadSettings();
+    void loadSettings(QString* err);
     void storeSettings();
 
     void processFiles(RunMode runMode);
@@ -80,6 +83,7 @@ LibTreeHash& LibTreeHash::operator=(LibTreeHash&& mve){
 void LibTreeHash::setRootDir(QString dir){
     QFileInfo fi(dir);
     this->priv->rootDir = fi.canonicalFilePath();
+    this->priv->rootSet = true;
 }
 
 QString LibTreeHash::getRootDir() const{
@@ -88,6 +92,7 @@ QString LibTreeHash::getRootDir() const{
 
 void LibTreeHash::setHashAlgorithm(QCryptographicHash::Algorithm alg){
     this->priv->hashAlgorithm = alg;
+    this->priv->hashAlgoSet = true;
 }
 
 QCryptographicHash::Algorithm LibTreeHash::getHashAlgorithm() const{
@@ -276,6 +281,43 @@ void LibTreeHashPrivate::openHashFile(){
         this->eventListener.callOnError(loadError, QStringLiteral("loading hashfile"));
         return;
     }
+
+    loadSettings(&loadError);
+    if(!loadError.isNull()){
+        ;
+    }
+}
+
+void LibTreeHashPrivate::loadSettings(QString* err){
+    if(const auto settings = this->hashFileData.find("settings"); settings != this->hashFileData.end()){
+        if(!this->rootSet){
+            if(const auto root = settings->find("rootDir"); root != settings->end()){
+                this->rootDir = QString::fromStdString(root->get<std::string>());
+            }
+        }
+
+        if(!this->hashAlgoSet){
+            if(const auto algo = settings->find("hashAlgorithm"); algo != settings->end()){
+                std::string storedHashAlgo = algo->get<std::string>();
+                bool valid;
+                auto algoVal = QMetaEnum::fromType<QCryptographicHash::Algorithm>().keyToValue(storedHashAlgo.c_str(), &valid);
+                if(valid){
+                    this->hashAlgorithm = static_cast<QCryptographicHash::Algorithm>(algoVal);
+                }else{
+                    if(err != nullptr)
+                        *err = QStringLiteral("settings/hashAlgorithm has invalid value");
+                    return;
+                }
+            }
+        }
+    }else{
+        if(err != nullptr)
+            *err = QStringLiteral("hash-file is malformed (missing settings obj)");
+        return;
+    }
+
+    if(err != nullptr)
+        *err = QString();
 }
 
 void LibTreeHashPrivate::processFiles(RunMode runMode){
