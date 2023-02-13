@@ -139,20 +139,26 @@ public:
      */
     QCryptographicHash::Algorithm getHashAlgorithm() const;
 
+    /**
+     * @brief sets the path of the file containing the hashes (will be used as source and destination)
+     *      ATTENTION: do not change the path while a process is running
+     */
     void setHashesFilePath(const QString path);
 
     /**
-     * @brief sets the path of the file containing the hashes
+     * @brief sets the source and destination of the file containing the hashes
      *      ATTENTION: do not change the path while a process is running
-     * @param path the path to the hash-file
      */
     void setHashesFile(std::unique_ptr<QFileDevice>&& src, std::unique_ptr<QFileDevice>&& dest);
 
     /**
-     * @brief returns the path of the currently used hash-file
+     * @brief returns the currently used hash-file source
      */
     const QFileDevice& getHashesFileSrc() const;
 
+    /**
+     * @brief returns the currently used hash-file destination
+     */
     const QFileDevice& getHashesFileDst() const;
 
     /**
@@ -168,6 +174,14 @@ public:
     const QStringList getFiles() const;
 
 private:
+    /**
+     * @brief if file is open checks if it is readable / writeable;
+     *          if it is not open it will try to open it with the appropriate mode
+     * @param file the file to check
+     * @param write if true make sure the file is writeable
+     * @param error if not nullptr an error-message will be stored on failure
+     * @return true if file is open and readable / writeable, false otherwise
+     */
     static bool ensureFileOpen(QFileDevice& file, bool write, QString* error);
 };
 
